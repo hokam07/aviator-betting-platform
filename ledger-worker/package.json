@@ -1,0 +1,25 @@
+{
+  "name": "ledger-worker",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node src/worker.js",
+    "dev": "nodemon src/worker.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "cassandra-driver": "^4.8.0",
+    "decimal.js": "^10.6.0",
+    "dotenv": "^17.2.3",
+    "kafka": "^0.2.3",
+    "kafkajs": "^2.2.4",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  }
+}
