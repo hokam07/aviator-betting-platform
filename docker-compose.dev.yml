@@ -1,0 +1,26 @@
+version: '3.8'
+
+# Development overrides for docker-compose.yml
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+services:
+  gateway:
+    volumes:
+      - ./gateway/src:/app/src
+    environment:
+      - NODE_ENV=development
+    command: npm run dev
+
+  callback:
+    volumes:
+      - ./callback/src:/app/src
+    environment:
+      - NODE_ENV=development
+    command: npm run dev
+
+  ledger-worker:
+    volumes:
+      - ./ledger-worker/src:/app/src
+    environment:
+      - NODE_ENV=development
+    command: npm run dev

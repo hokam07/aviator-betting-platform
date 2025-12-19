@@ -1,6 +1,7 @@
 const client = require('../cassandra/client');
 const crypto = require('crypto');
 const Decimal = require('decimal.js');
+const { syncBalanceToRedis } = require('../services/balance.sync');
 
 const GET_USER = 'SELECT balance, pending_debits, version FROM users WHERE user_id = ?';
 const UPDATE_BALANCE_CONDITIONAL = `
@@ -42,11 +43,17 @@ async function getUserBalance(userId) {
 }
 
 async function pendingDebit(userId, amount, betRoundId, dateBucket) {
+    // Validate and normalize amount to 2 decimal places
+    const normalizedAmount = parseFloat(amount).toFixed(2);
+    if (isNaN(normalizedAmount) || normalizedAmount < 0) {
+        throw new Error(`Invalid amount: ${amount}`);
+    }
+
     const user = await getUserBalance(userId);
 
     // Conditional update with optimistic lock
     const newBalance = user.balance; // not changing confirmed balance yet
-    const newPending = (user.pending_debits || 0) + amount;
+    const newPending = (user.pending_debits || 0) + parseFloat(normalizedAmount);
 
     const result = await client.execute(UPDATE_BALANCE_CONDITIONAL, [
         newBalance, newPending, userId, user.version
@@ -58,7 +65,7 @@ async function pendingDebit(userId, amount, betRoundId, dateBucket) {
 
     // Insert pending txn
     await client.execute(INSERT_TXN, [
-        userId, dateBucket, amount, 'DEBIT', 'PENDING',
+        userId, dateBucket, normalizedAmount, 'DEBIT', 'PENDING',
         betRoundId, null, 'bet', 'aviator-aggregator'
     ], { prepare: true });
 
@@ -70,6 +77,12 @@ async function processCallbackEvent(event) {
         type, user_id, bet_round_id, amount, external_tx_id,
         provider = 'aviator-aggregator', payload
     } = event;
+
+    // Validate and normalize amount to 2 decimal places
+    const normalizedAmount = parseFloat(amount).toFixed(2);
+    if (isNaN(normalizedAmount) || normalizedAmount < 0) {
+        throw new Error(`Invalid amount: ${amount}`);
+    }
 
     const payloadHash = crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
     const dateBucket = new Date().toISOString().slice(0, 7); // YYYY-MM
@@ -85,29 +98,40 @@ async function processCallbackEvent(event) {
 
     let applied = false;
     switch (type) {
-        case 'bet_confirmed': {
-            // Confirm pending debit
-            // In real: find the pending tx_id via query, here we assume one per round
-            // For simplicity: just reduce pending_debits
-            let newBalance = new Decimal(user.balance);
-            let newPending = new Decimal(user.pending_debits || 0).minus(amount);
-            applied = await applyConditionalUpdate(
-                user_id, newBalance.toString(), newPending.toString(), user.version
-            );
-            if (applied) {
-                await client.execute(MARK_IDEMPOTENT, [provider, external_tx_id, payloadHash, user_id, bet_round_id], { prepare: true });
+        case 'bet': {
+            // Deduct balance for bet
+            let newBalance = new Decimal(parseFloat(user.balance || 0).toFixed(2)).minus(normalizedAmount);
+            let newPending = new Decimal(parseFloat(user.pending_debits || 0).toFixed(2));
+
+            if (newBalance.lessThan(0)) {
+                console.warn(`Insufficient balance for bet: ${user_id}`);
+                return { applied: false, error: 'Insufficient balance' };
             }
-            break;
-        }
-        case 'win': {
-            let newBalance = new Decimal(user.balance);
-            let newPending = new Decimal(user.pending_debits || 0).plus(amount);
+
             applied = await applyConditionalUpdate(
                 user_id, newBalance.toString(), newPending.toString(), user.version
             );
             if (applied) {
                 await client.execute(INSERT_TXN, [
-                    user_id, dateBucket, amount, 'CREDIT', 'CONFIRMED',
+                    user_id, dateBucket, normalizedAmount, 'DEBIT', 'CONFIRMED',
+                    bet_round_id, external_tx_id, 'bet', provider
+                ], { prepare: true });
+                await client.execute(MARK_IDEMPOTENT, [provider, external_tx_id, payloadHash, user_id, bet_round_id], { prepare: true });
+            }
+            break;
+        }
+
+        case 'win': {
+            // Credit balance for win (only if bet exists)
+            // TODO: Add check to verify bet_round_id exists
+            let newBalance = new Decimal(parseFloat(user.balance || 0).toFixed(2)).plus(normalizedAmount);
+            let newPending = new Decimal(parseFloat(user.pending_debits || 0).toFixed(2));
+            applied = await applyConditionalUpdate(
+                user_id, newBalance.toString(), newPending.toString(), user.version
+            );
+            if (applied) {
+                await client.execute(INSERT_TXN, [
+                    user_id, dateBucket, normalizedAmount, 'CREDIT', 'CONFIRMED',
                     bet_round_id, external_tx_id, 'win', provider
                 ], { prepare: true });
                 await client.execute(MARK_IDEMPOTENT, [provider, external_tx_id, payloadHash, user_id, bet_round_id], { prepare: true });
@@ -116,25 +140,50 @@ async function processCallbackEvent(event) {
         }
 
         case 'loss': {
-            let newBalance = new Decimal(user.balance);
-            let newPending = new Decimal(user.pending_debits || 0).minus(amount);
-            applied = await applyConditionalUpdate(
-                user_id, newBalance.toString(), newPending.toString(), user.version
-            );
-            break;
-        }
-
-        case 'rollback': {
-            // Refund pending debit
-            let newBalance = new Decimal(user.balance).plus(amount);
-            let newPending = new Decimal(user.pending_debits || 0).minus(amount);
+            // Just mark as loss, no balance change
+            let newBalance = new Decimal(parseFloat(user.balance || 0).toFixed(2));
+            let newPending = new Decimal(parseFloat(user.pending_debits || 0).toFixed(2));
             applied = await applyConditionalUpdate(
                 user_id, newBalance.toString(), newPending.toString(), user.version
             );
             if (applied) {
                 await client.execute(INSERT_TXN, [
-                    user_id, dateBucket, amount, 'CREDIT', 'CONFIRMED',
-                    bet_round_id, external_tx_id, 'rollback', provider
+                    user_id, dateBucket, normalizedAmount, 'DEBIT', 'CONFIRMED',
+                    bet_round_id, external_tx_id, 'loss', provider
+                ], { prepare: true });
+                await client.execute(MARK_IDEMPOTENT, [provider, external_tx_id, payloadHash, user_id, bet_round_id], { prepare: true });
+            }
+            break;
+        }
+
+        case 'rollback-bet': {
+            // Rollback bet - credit back the bet amount
+            let newBalance = new Decimal(parseFloat(user.balance || 0).toFixed(2)).plus(normalizedAmount);
+            let newPending = new Decimal(parseFloat(user.pending_debits || 0).toFixed(2));
+            applied = await applyConditionalUpdate(
+                user_id, newBalance.toString(), newPending.toString(), user.version
+            );
+            if (applied) {
+                await client.execute(INSERT_TXN, [
+                    user_id, dateBucket, normalizedAmount, 'CREDIT', 'CONFIRMED',
+                    bet_round_id, external_tx_id, 'rollback-bet', provider
+                ], { prepare: true });
+                await client.execute(MARK_IDEMPOTENT, [provider, external_tx_id, payloadHash, user_id, bet_round_id], { prepare: true });
+            }
+            break;
+        }
+
+        case 'rollback-win': {
+            // Rollback win - debit back the win amount
+            let newBalance = new Decimal(parseFloat(user.balance || 0).toFixed(2)).minus(normalizedAmount);
+            let newPending = new Decimal(parseFloat(user.pending_debits || 0).toFixed(2));
+            applied = await applyConditionalUpdate(
+                user_id, newBalance.toString(), newPending.toString(), user.version
+            );
+            if (applied) {
+                await client.execute(INSERT_TXN, [
+                    user_id, dateBucket, normalizedAmount, 'DEBIT', 'CONFIRMED',
+                    bet_round_id, external_tx_id, 'rollback-win', provider
                 ], { prepare: true });
                 await client.execute(MARK_IDEMPOTENT, [provider, external_tx_id, payloadHash, user_id, bet_round_id], { prepare: true });
             }
@@ -142,14 +191,22 @@ async function processCallbackEvent(event) {
         }
     }
 
-    return { applied, new_balance: applied ? (await getUserBalance(user_id)).balance : user.balance };
+    return { applied, new_balance: applied ? (await getUserBalance(user_id)).balance : user.balance, user_id };
 }
 
 async function applyConditionalUpdate(userId, newBalance, newPending, expectedVersion) {
     const result = await client.execute(UPDATE_BALANCE_CONDITIONAL, [
         newBalance, newPending, userId, expectedVersion
     ], { prepare: true });
-    return result['[applied]'];
+
+    const applied = result['[applied]'];
+
+    // Sync balance to Redis if update was successful
+    if (applied) {
+        await syncBalanceToRedis(userId, newBalance);
+    }
+
+    return applied;
 }
 
 module.exports = {

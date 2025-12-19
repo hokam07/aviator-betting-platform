@@ -1,55 +1,95 @@
-version: "3.9"
+version: "3.8"
 
 services:
   cassandra:
-    image: cassandra:4.1
+    image: cassandra:5.0 # Latest stable as of late 2025
     container_name: cassandra
     ports:
       - "9042:9042"
     volumes:
-      - cassandra_data:/var/lib/cassandra
+      - cassandra-data:/var/lib/cassandra
+      - ./cassandra-init/schema.cql:/docker-entrypoint-initdb.d/schema.cql # Auto-runs on first start
+    environment:
+      - HEAP_NEWSIZE=1G
+      - MAX_HEAP_SIZE=4G
     healthcheck:
-      test: ["CMD", "cqlsh", "-e", "DESCRIBE KEYSPACES"]
-      interval: 15s
+      test: ["CMD-SHELL", "[ $$(nodetool statusgossip) = running ]"]
+      interval: 30s
       timeout: 10s
-      retries: 10
+      retries: 5
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "9101:9101"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
 
   redis:
-    image: redis:7
+    image: redis:7-alpine
     container_name: redis
     ports:
       - "6379:6379"
-    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
 
-  api:
-    build: ./api
-    container_name: api
+  ledger-worker:
+    build: ./ledger-worker
+    container_name: ledger-worker
+    depends_on:
+      cassandra:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    environment:
+      - CASSANDRA_HOSTS=cassandra
+      - CASSANDRA_KEYSPACE=aviator
+      - KAFKA_BROKERS=kafka:9092
+    restart: unless-stopped
+
+  callback:
+    build: ./callback
+    container_name: callback
+    ports:
+      - "3001:3000"
+    depends_on:
+      - kafka
+    environment:
+      - KAFKA_BROKERS=kafka:9092
+      - HMAC_SECRET=${HMAC_SECRET:-super-secret-change-in-prod}
+    restart: unless-stopped
+
+  gateway:
+    build: ./gateway
+    container_name: gateway
     ports:
       - "3000:3000"
-    env_file:
-      - .env
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
     depends_on:
-      cassandra:
-        condition: service_healthy
-      redis:
-        condition: service_started
-
-  worker:
-    build: ./worker
-    container_name: worker
-    env_file:
-      - .env
+      - kafka
+      - redis
     environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-    depends_on:
-      cassandra:
-        condition: service_healthy
-      redis:
-        condition: service_started
+      - KAFKA_BROKERS=kafka:9092
+      - REDIS_URL=redis://redis:6379
+      - AGGREGATOR_URL=${AGGREGATOR_URL:-https://aggregator.example.com/api}
+      - AGGREGATOR_API_KEY=${AGGREGATOR_API_KEY:-test-key}
+    restart: unless-stopped
 
 volumes:
-  cassandra_data:
+  cassandra-data:
