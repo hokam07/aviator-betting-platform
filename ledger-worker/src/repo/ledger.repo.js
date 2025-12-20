@@ -59,30 +59,30 @@ async function getUserBalance(userId) {
 
 async function pendingDebit(userId, amount, betRoundId, dateBucket) {
     // Validate and normalize amount to 2 decimal places
-    const normalizedAmount = parseFloat(amount).toFixed(2);
-    if (isNaN(normalizedAmount) || normalizedAmount < 0) {
-        throw new Error(`Invalid amount: ${amount} `);
+    const normalizedAmount = new Decimal(parseFloat(amount).toFixed(2));
+    if (normalizedAmount.isNaN() || normalizedAmount.lessThan(0)) {
+        throw new Error(`Invalid amount: ${amount}`);
     }
 
     const user = await getUserBalance(userId);
 
-    // Conditional update with optimistic lock
-    const newBalance = user.balance; // not changing confirmed balance yet
-    const newPending = (user.pending_debits || 0) + parseFloat(normalizedAmount);
+    const newBalance = new Decimal(parseFloat(user.balance || 0).toFixed(2));
+    const newPending = new Decimal(parseFloat(user.pending_debits || 0).toFixed(2)).plus(normalizedAmount);
 
-    const result = await client.execute(UPDATE_BALANCE_CONDITIONAL, [
-        newBalance, newPending, userId, user.version
-    ], { prepare: true });
+    const applied = await applyConditionalUpdate(
+        userId, newBalance.toString(), newPending.toString(), user.version
+    );
 
-    if (!result.wasApplied()) {
+    if (!applied) {
         throw new Error('Balance update conflict - retry');
     }
 
     // Insert pending txn
     await client.execute(INSERT_TXN, [
-        userId, dateBucket, normalizedAmount, 'DEBIT', 'PENDING',
+        userId, dateBucket, normalizedAmount.toString(), 'DEBIT', 'PENDING',
         betRoundId, null, 'bet', 'aviator-aggregator'
     ], { prepare: true });
+    console.log(`[TRACE] Transaction inserted for user ${userId}`);
 
     return true;
 }
@@ -137,7 +137,11 @@ async function processCallbackEvent(event) {
                 // Update Stats
                 const amountCents = Math.round(parseFloat(normalizedAmount) * 100);
                 await client.execute(INC_STATS_BET, [amountCents, user_id], { prepare: true });
-                await incUserStatsInRedis(user_id, { bet: true, bet_cents: amountCents });
+                try {
+                    await incUserStatsInRedis(user_id, { bet: true, bet_cents: amountCents });
+                } catch (statsErr) {
+                    console.error(`Stats sync failed for user ${user_id}:`, statsErr);
+                }
 
                 // Publish Bet to Public Feed
                 await redis.publish('public_feed', JSON.stringify({
@@ -168,7 +172,11 @@ async function processCallbackEvent(event) {
                 // Update Stats
                 const amountCents = Math.round(parseFloat(normalizedAmount) * 100);
                 await client.execute(INC_STATS_WIN, [amountCents, user_id], { prepare: true });
-                await incUserStatsInRedis(user_id, { win: true, win_cents: amountCents });
+                try {
+                    await incUserStatsInRedis(user_id, { win: true, win_cents: amountCents });
+                } catch (statsErr) {
+                    console.error(`Stats sync failed for user ${user_id}:`, statsErr);
+                }
 
                 // Publish Win to Public Feed
                 await redis.publish('public_feed', JSON.stringify({
@@ -197,7 +205,11 @@ async function processCallbackEvent(event) {
 
                 // Update Stats
                 await client.execute(INC_STATS_LOSS, [user_id], { prepare: true });
-                await incUserStatsInRedis(user_id, { loss: true });
+                try {
+                    await incUserStatsInRedis(user_id, { loss: true });
+                } catch (statsErr) {
+                    console.error(`Stats sync failed for user ${user_id}:`, statsErr);
+                }
             }
             break;
         }

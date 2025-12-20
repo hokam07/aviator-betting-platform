@@ -44,7 +44,7 @@ const argv = yargs(hideBin(process.argv))
     .option('init-wait', {
         type: 'number',
         description: 'Wait time in ms after user initialization',
-        default: 10000
+        default: 1000
     })
     .argv;
 
@@ -137,16 +137,22 @@ class VirtualUser {
                         const balanceCheck = await axios.get(`${GATEWAY_URL}/api/balance/${this.userId}`);
                         this.balance = balanceCheck.data.balance;
                         console.log(chalk.green(`✓ User ${this.userId} initialized with balance: ${this.balance}`));
+
+                        // Start betting immediately for this user
+                        this.start();
                     } catch (initErr) {
                         console.log(chalk.yellow(`⚠ User ${this.userId} initialization failed, starting with 0 balance`));
                         this.balance = 0;
+                        this.start();
                     }
                 } else {
                     console.log(chalk.gray(`✓ User ${this.userId} initialized with 0 balance (edge case)`));
                     this.balance = 0;
+                    this.start();
                 }
             } else {
                 console.log(chalk.green(`✓ User ${this.userId} initialized with existing balance: ${this.balance}`));
+                this.start();
             }
         } catch (err) {
             console.log(chalk.red(`✗ User ${this.userId} initialization error: ${err.message}`));
@@ -264,17 +270,22 @@ async function runLoadTest() {
     const users = [];
     for (let i = 0; i < NUM_USERS; i++) {
         const userId = generateUserId(i);
-        const user = new VirtualUser(userId);
-        await user.initialize();
-        users.push(user);
+        users.push(new VirtualUser(userId));
     }
 
-    console.log(chalk.green(`\n✓ ${NUM_USERS} users initialized\n`));
+    console.log(chalk.yellow(`\n⚙️  Initializing ${NUM_USERS} users in parallel...`));
 
-    // Start all users
-    const userPromises = users.map(user => user.start());
+    // Initialize in parallel chunks to avoid overwhelming the gateway
+    const CHUNK_SIZE = 10;
+    for (let i = 0; i < users.length; i += CHUNK_SIZE) {
+        const chunk = users.slice(i, i + CHUNK_SIZE);
+        await Promise.all(chunk.map(u => u.initialize()));
+        console.log(chalk.gray(`  - ${Math.min(i + CHUNK_SIZE, users.length)} / ${users.length} ready...`));
+    }
 
-    // Run for specified duration
+    console.log(chalk.green(`\n✓ ${NUM_USERS} users initialized and started betting\n`));
+
+    // Wait for the duration independently
     await new Promise(resolve => setTimeout(resolve, DURATION_SECONDS * 1000));
 
     // Stop all users

@@ -13,6 +13,8 @@ const socketInstance = io(WS_URL, {
 });
 
 function App() {
+  const winTimeoutRef = React.useRef(null);
+  const [toastKey, setToastKey] = useState(0);
   const [totalBets, setTotalBets] = useState(0);
   const [totalWon, setTotalWon] = useState(0);
   const [messages, setMessages] = useState([]);
@@ -34,6 +36,7 @@ function App() {
     };
 
     const handlePublicFeed = (data) => {
+      console.log(`[APP] WS Feed:`, data.type, data.amount);
       setEventCount(prev => prev + 1);
       setLastEvent(data);
 
@@ -41,13 +44,19 @@ function App() {
         setTotalBets(prev => prev + 1);
         setBets(prev => [data, ...prev].slice(0, 50));
       } else if (data.type === 'win') {
-        setTotalWon(prev => prev + data.amount);
+        setTotalWon(prev => prev + (parseFloat(data.amount) || 0));
         setBets(prev => [{...data, type: 'win'}, ...prev].slice(0, 50));
 
-        if (data.amount >= 500) {
+        if (data.amount >= 100) {
+          console.log(`[APP] Showing Win Toast for $${data.amount}`);
           setWinAmount(data.amount);
+          setToastKey(prev => prev + 1);
           setShowWinToast(true);
-          setTimeout(() => setShowWinToast(false), 4000);
+          
+          if (winTimeoutRef.current) clearTimeout(winTimeoutRef.current);
+          winTimeoutRef.current = setTimeout(() => {
+            setShowWinToast(false);
+          }, 5000);
         }
       }
     };
@@ -74,7 +83,7 @@ function App() {
       
       {/* Win Toast Notification */}
       {showWinToast && (
-        <div className="fixed top-10 left-1/2 -translate-x-1/2 z-50 animate-bounce pointer-events-none">
+        <div key={toastKey} className="fixed top-10 left-1/2 -translate-x-1/2 z-50 animate-bounce pointer-events-none">
           <div className="bg-gradient-to-r from-yellow-400 via-orange-500 to-red-500 p-1 rounded-2xl shadow-[0_0_50px_rgba(234,179,8,0.5)]">
             <div className="bg-gray-900 px-8 py-4 rounded-xl flex items-center gap-4">
               <span className="text-4xl">🎉</span>

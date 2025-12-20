@@ -110,7 +110,7 @@ export default function MainUserControl({ socket }) {
                     setAutoBet(false);
                     alert(`Bet failed: ${err.message}`);
                 }
-            }, 3000); // Bet every 3 seconds
+            }, 1000); // Bet every 1 second
         }
         return () => clearInterval(interval);
     }, [autoBet, betAmount]);
@@ -231,7 +231,7 @@ export default function MainUserControl({ socket }) {
             {autoBet && (
                 <div className="flex items-center justify-center gap-3 text-emerald-300 text-lg font-bold bg-emerald-950/30 py-3 rounded-lg border border-emerald-500/20 animate-pulse">
                     <span className="w-3 h-3 bg-emerald-400 rounded-full shadow-[0_0_10px_#34d399]"></span>
-                    AUTOMATIC BETTING ACTIVE • 3s INTERVAL
+                    AUTOMATIC BETTING ACTIVE • 1s INTERVAL
                 </div>
             )}
         </div>
