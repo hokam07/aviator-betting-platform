@@ -33,17 +33,14 @@ services:
     depends_on:
       - zookeeper
     ports:
-      - "9093:9093"  
+      - "9093:9093"
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9093
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9093
-
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
@@ -59,8 +56,6 @@ services:
 
   ledger-worker:
     build: ./ledger-worker
-    deploy:
-      replicas: 3
     volumes:
       - ./ledger-worker/src:/usr/src/app/src
     depends_on:
@@ -78,7 +73,7 @@ services:
   callback:
     build: ./callback
     ports:
-      - "3001:3000"
+      - "3001:3000"  # Only one instance needed for callback
     depends_on:
       - kafka
     environment:
@@ -88,10 +83,6 @@ services:
 
   gateway:
     build: ./gateway
-    ports:
-      - "3000:3000"
-    deploy:
-      replicas: 3  
     volumes:
       - ./gateway/src:/usr/src/app/src
     depends_on:
@@ -106,8 +97,6 @@ services:
 
   bet-resolver:
     build: ./bet-resolver
-    deploy:
-      replicas: 4
     volumes:
       - ./bet-resolver:/usr/src/app
     depends_on:
@@ -133,7 +122,7 @@ services:
   grafana:
     image: grafana/grafana:latest
     ports:
-      - "3100:3000"  
+      - "3100:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
     depends_on:

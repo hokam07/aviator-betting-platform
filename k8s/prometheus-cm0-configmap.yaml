@@ -1,0 +1,10 @@
+apiVersion: v1
+data:
+  prometheus.yml: "global:\n  scrape_interval: 15s\n\nscrape_configs:\n  - job_name: 'gateway'\n    static_configs:\n      - targets: ['gateway:3000']\n\n  - job_name: 'callback'\n    static_configs:\n      - targets: ['callback:3000']\n\n  - job_name: 'ledger-worker'\n    static_configs:\n      - targets: ['ledger-worker:3000']  \n\n  - job_name: 'bet-resolver'\n    static_configs:\n      - targets: ['bet-resolver:3000']"
+kind: ConfigMap
+metadata:
+  annotations:
+    use-subpath: "true"
+  labels:
+    io.kompose.service: prometheus
+  name: prometheus-cm0

@@ -6,12 +6,22 @@ KAFKA_BIN=/usr/bin
 CASSANDRA_CONTAINER=cassandra
 KAFKA_CONTAINER=kafka
 
+# Environment (local by default)
+ENV ?= local
+COMPOSE_FILE = docker-compose.yml
+COMPOSE_CMD = docker-compose -f $(COMPOSE_FILE)
+
 .PHONY: \
 	help up down build logs restart clean \
-	dashboard simulate \
+	local-up local-down local-logs local-clean \
+	prod-up prod-down prod-logs \
+	dashboard simulate simulate-high \
 	test-bet test-callback \
-	cassandra-init cassandra-status \
-	kafka-topics kafka-status
+	cassandra-init cassandra-status cassandra-shell \
+	kafka-topics kafka-status kafka-consume \
+	scale-gateway scale-workers \
+	prometheus grafana \
+	status
 
 # ========================
 # HELP
@@ -19,42 +29,98 @@ KAFKA_CONTAINER=kafka
 
 help:
 	@echo ""
-	@echo "Service:"
-	@echo "  make up              - Start containers"
+	@echo "Environment:"
+	@echo "  ENV=local (default) or ENV=prod"
+	@echo ""
+	@echo "Core Commands:"
+	@echo "  make up              - Start containers (uses ENV)"
 	@echo "  make down            - Stop containers"
 	@echo "  make logs            - Follow logs"
 	@echo "  make clean           - Remove containers + volumes"
+	@echo "  make status          - Show running containers and ports"
+	@echo ""
+	@echo "Local Development:"
+	@echo "  make local-up        - Start with development settings"
+	@echo "  make local-down      - Stop local stack"
+	@echo "  make local-logs      - Follow local logs"
+	@echo "  make local-clean     - Full clean for local"
+	@echo ""
+	@echo "Production Simulation:"
+	@echo "  make prod-up         - Start with production-like settings (no volume mounts, no ports conflict)"
+	@echo "  make prod-down       - Stop production stack"
+	@echo "  make prod-logs       - Follow production logs"
 	@echo ""
 	@echo "Application:"
 	@echo "  make dashboard       - Start React Dashboard & Simulator"
-	@echo "  make simulate        - Run traffic simulation (CLI)"
+	@echo "  make simulate        - Run moderate traffic simulation (2000 users)"
+	@echo "  make simulate-high   - Run high load simulation (5000 users)"
 	@echo ""
 	@echo "Testing:"
 	@echo "  make test-bet        - Place a manual test bet"
 	@echo "  make test-callback   - Send a manual test callback"
 	@echo ""
+	@echo "Infra Tools:"
+	@echo "  make cassandra-init     - Apply schema"
+	@echo "  make cassandra-status   - Show keyspaces"
+	@echo "  make cassandra-shell    - Open cqlsh"
+	@echo "  make kafka-topics       - Create required topics"
+	@echo "  make kafka-status       - List topics"
+	@echo "  make kafka-consume      - Consume from a topic (interactive)"
+	@echo ""
+	@echo "Scaling:"
+	@echo "  make scale-gateway N=5  - Scale gateway to N replicas"
+	@echo "  make scale-workers N=6  - Scale ledger + resolver workers"
+	@echo ""
+	@echo "Monitoring:"
+	@echo "  make prometheus      - Open Prometheus UI"
+	@echo "  make grafana         - Open Grafana UI"
+	@echo ""
 
 # ========================
-# CORE
+# CORE (ENV-AWARE)
 # ========================
 
-up:
-	docker-compose up -d
+up: $(ENV)-up
 
-down:
-	docker-compose down
+down: $(ENV)-down
 
-build:
-	docker-compose build
+logs: $(ENV)-logs
 
-logs:
-	docker-compose logs -f
+clean: $(ENV)-clean
 
-restart:
-	docker-compose restart
+status:
+	@$(COMPOSE_CMD) ps
 
-clean:
-	docker-compose down -v
+# ========================
+# LOCAL DEVELOPMENT
+# ========================
+
+local-up:
+	$(COMPOSE_CMD) up -d
+
+local-down:
+	$(COMPOSE_CMD) down
+
+local-logs:
+	$(COMPOSE_CMD) logs -f
+
+local-clean:
+	$(COMPOSE_CMD) down -v
+	docker system prune -f
+
+# ========================
+# PRODUCTION SIMULATION (No host ports on scaled services, no volume mounts)
+# ========================
+
+prod-up:
+	@echo "Starting production-like stack (no host port conflicts, suitable for scaling)..."
+	$(COMPOSE_CMD) up -d --scale gateway=5 --scale ledger-worker=4 --scale bet-resolver=6
+
+prod-down:
+	$(COMPOSE_CMD) down
+
+prod-logs:
+	$(COMPOSE_CMD) logs -f
 
 # ========================
 # APPLICATION
@@ -65,6 +131,9 @@ dashboard:
 
 simulate:
 	node scripts/simulate-traffic.js --users 2000 --duration 60
+
+simulate-high:
+	node scripts/simulate-traffic.js --users 5000 --duration 120
 
 # ========================
 # TESTING
@@ -79,7 +148,7 @@ test-callback:
 	curl -X POST http://localhost:3001/callback \
 		-H "Content-Type: application/json" \
 		-H "x-signature: dummy" \
-		-d '{"type":"win","external_tx_id":"test-$(shell date +%s)","user_id":"11111111-1111-1111-1111-111111111111","bet_round_id":"manual-round","amount":50}'
+		-d '{"type":"win","external_tx_id":"test-$$(date +%s)","user_id":"11111111-1111-1111-1111-111111111111","bet_round_id":"manual-round","amount":50}'
 
 # ========================
 # INFRA
@@ -87,27 +156,102 @@ test-callback:
 
 cassandra-init:
 	@docker exec -i $(CASSANDRA_CONTAINER) cqlsh < ledger-worker/db/schema.cql
-	@echo "✓ Cassandra schema ready"
+	@echo "✓ Cassandra schema applied"
 
 cassandra-status:
 	@docker exec $(CASSANDRA_CONTAINER) cqlsh -e "DESCRIBE KEYSPACES"
 
+cassandra-shell:
+	@docker exec -it $(CASSANDRA_CONTAINER) cqlsh
+
 kafka-topics:
 	@echo "Creating Kafka topics..."
-	@docker exec $(KAFKA_CONTAINER) $(KAFKA_BIN)/kafka-topics \
+	@docker exec $(KAFKA_CONTAINER) $(KAFKA_BIN)/kafka-topics.sh \
 		--bootstrap-server kafka:9093 \
 		--create --if-not-exists \
 		--topic bet-events \
-		--partitions 3 \
+		--partitions 12 \
 		--replication-factor 1
-	@docker exec $(KAFKA_CONTAINER) $(KAFKA_BIN)/kafka-topics \
+	@docker exec $(KAFKA_CONTAINER) $(KAFKA_BIN)/kafka-topics.sh \
 		--bootstrap-server kafka:9093 \
 		--create --if-not-exists \
 		--topic aggregator-callbacks \
-		--partitions 3 \
+		--partitions 12 \
 		--replication-factor 1
 	@echo "✓ Kafka topics ready"
 
 kafka-status:
-	@docker exec $(KAFKA_CONTAINER) $(KAFKA_BIN)/kafka-topics \
+	@docker exec $(KAFKA_CONTAINER) $(KAFKA_BIN)/kafka-topics.sh \
 		--bootstrap-server kafka:9093 --list
+
+kafka-consume:
+	@echo "Consuming from bet-events topic (Ctrl+C to stop)..."
+	@docker exec -it $(KAFKA_CONTAINER) $(KAFKA_BIN)/kafka-console-consumer.sh \
+		--bootstrap-server kafka:9093 \
+		--topic bet-events \
+		--from-beginning
+
+# ========================
+# SCALING
+# ========================
+
+scale-gateway:
+	@echo "Scaling gateway to $(N) replicas..."
+	$(COMPOSE_CMD) up -d --scale gateway=$(N) gateway
+
+scale-workers:
+	@echo "Scaling workers to $(N) replicas..."
+	$(COMPOSE_CMD) up -d --scale ledger-worker=$(N) --scale bet-resolver=$(N)
+
+# ========================
+# MONITORING
+# ========================
+
+prometheus:
+	open http://localhost:9090
+
+grafana:
+	open http://localhost:3100
+
+# ========================
+# LOCAL DEVELOPMENT (using docker-compose.dev.yml)
+# ========================
+
+dev-up:
+	@echo "Starting development stack (hot-reload, exposed ports)..."
+	docker-compose -f docker-compose.dev.yml up -d
+
+dev-down:
+	docker-compose -f docker-compose.dev.yml down
+
+dev-logs:
+	docker-compose -f docker-compose.dev.yml logs -f
+
+dev-build:
+	docker-compose -f docker-compose.dev.yml build
+
+dev-restart:
+	docker-compose -f docker-compose.dev.yml restart
+
+dev-clean:
+	docker-compose -f docker-compose.dev.yml down -v
+
+dev-status:
+	docker-compose -f docker-compose.dev.yml ps
+
+dev-scale-gateway:
+	@echo "Scaling gateway to $(N) replicas in dev mode..."
+	docker-compose -f docker-compose.dev.yml up -d --scale gateway=$(N) gateway
+
+dev-scale-workers:
+	@echo "Scaling workers in dev mode..."
+	docker-compose -f docker-compose.dev.yml up -d --scale ledger-worker=$(N) --scale bet-resolver=$(N)
+
+# ========================
+# QUICK ALIASES
+# ========================
+
+dev: dev-up dev-logs
+	@echo "Development stack is running. Edit code — changes will reload automatically."
+
+dev-stop: dev-down
