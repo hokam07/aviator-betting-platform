@@ -2,13 +2,13 @@ version: "3.8"
 
 services:
   cassandra:
-    image: cassandra:5.0 
+    image: cassandra:5.0
     container_name: cassandra
     ports:
       - "9042:9042"
     volumes:
       - cassandra-data:/var/lib/cassandra
-      - ./ledger-worker/db/schema.cql:/docker-entrypoint-initdb.d/schema.cql 
+      - ./ledger-worker/db/schema.cql:/docker-entrypoint-initdb.d/schema.cql
     environment:
       - HEAP_NEWSIZE=1G
       - MAX_HEAP_SIZE=4G
@@ -33,22 +33,22 @@ services:
     depends_on:
       - zookeeper
     ports:
-      - "9093:29093"
+      - "9093:9093"  # Fixed: host:container same port
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
 
-      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9093,EXTERNAL://0.0.0.0:29093
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9093,EXTERNAL://localhost:9093
+      # Only one listener — simple and reliable
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9093
 
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
 
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-
-      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_NUM_PARTITIONS: 12
       KAFKA_DEFAULT_REPLICATION_FACTOR: 1
 
   redis:
@@ -56,14 +56,14 @@ services:
     container_name: redis
     ports:
       - "6379:6379"
+    command: redis-server --save 60 1 --loglevel warning
 
   ledger-worker:
     build: ./ledger-worker
-    container_name: ledger-worker
+    deploy:
+      replicas: 3
     volumes:
-    - ./ledger-worker/src:/usr/src/app/src
-    - ./ledger-worker/package.json:/usr/src/app/package.json
-    - ./ledger-worker/package-lock.json:/usr/src/app/package-lock.json
+      - ./ledger-worker/src:/usr/src/app/src
     depends_on:
       cassandra:
         condition: service_healthy
@@ -78,7 +78,6 @@ services:
 
   callback:
     build: ./callback
-    container_name: callback
     ports:
       - "3001:3000"
     depends_on:
@@ -90,13 +89,12 @@ services:
 
   gateway:
     build: ./gateway
-    container_name: gateway
     ports:
       - "3000:3000"
+    deploy:
+      replicas: 3  # Will run 3 instances, all listening internally on 3000
     volumes:
-    - ./gateway/src:/usr/src/app/src
-    - ./gateway/package.json:/usr/src/app/package.json
-    - ./gateway/package-lock.json:/usr/src/app/package-lock.json
+      - ./gateway/src:/usr/src/app/src
     depends_on:
       - kafka
       - redis
@@ -109,10 +107,10 @@ services:
 
   bet-resolver:
     build: ./bet-resolver
-    container_name: bet-resolver
+    deploy:
+      replicas: 4
     volumes:
       - ./bet-resolver:/usr/src/app
-      - /usr/src/app/node_modules
     depends_on:
       - kafka
       - callback
@@ -120,6 +118,27 @@ services:
       - KAFKA_BROKERS=kafka:9093
       - CALLBACK_URL=http://callback:3000/callback
     restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3100:3000"  # Changed to avoid conflict with gateway
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus
 
 volumes:
   cassandra-data:
