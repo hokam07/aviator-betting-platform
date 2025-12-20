@@ -255,3 +255,62 @@ dev: dev-up dev-logs
 	@echo "Development stack is running. Edit code — changes will reload automatically."
 
 dev-stop: dev-down
+
+# ========================
+# INTERNAL HELPERS
+# ========================
+
+define wait_for_container
+	@echo "⏳ Waiting for $(1) to be ready..."
+	@until docker inspect --format='{{.State.Health.Status}}' $(1) 2>/dev/null | grep -q healthy; do \
+		sleep 5; \
+	done
+	@echo "✅ $(1) is healthy"
+endef
+
+define check_failures
+	@FAILED=$$($(COMPOSE_CMD) ps --services --filter "status=exited"); \
+	if [ -n "$$FAILED" ]; then \
+		echo "❌ Some services failed:"; \
+		echo "$$FAILED"; \
+		echo "📄 Showing last logs:"; \
+		$(COMPOSE_CMD) logs --tail=50 $$FAILED; \
+		exit 1; \
+	else \
+		echo "✅ All services running"; \
+	fi
+endef
+
+define wait_for_cassandra_cql
+	@echo "⏳ Waiting for Cassandra CQL (9042)..."
+	@until docker exec $(CASSANDRA_CONTAINER) cqlsh -e "DESCRIBE KEYSPACES" >/dev/null 2>&1; do \
+		sleep 3; \
+	done
+	@echo "✅ Cassandra CQL is ready"
+endef
+
+
+# ========================
+# BOOTSTRAP (UP + INIT + VERIFY)
+# ========================
+
+bootstrap:
+	@echo "🚀 Starting full system bootstrap (ENV=$(ENV))..."
+	@$(MAKE) up
+
+	$(call wait_for_container,$(CASSANDRA_CONTAINER))
+	$(call wait_for_cassandra_cql)
+
+	@echo "🧱 Initializing Cassandra schema..."
+	@$(MAKE) cassandra-init
+
+	@echo "📦 Creating Kafka topics..."
+	@$(MAKE) kafka-topics
+
+	@echo "📊 Final system status:"
+	@$(MAKE) status
+
+	$(call check_failures)
+
+	@echo ""
+	@echo "🎉 SYSTEM READY"

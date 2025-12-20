@@ -11,6 +11,7 @@ app.get('/metrics', async (req, res) => {
 });
 
 const cors = require('cors');
+const { httpRequestsTotal } = require('./metrics');
 
 app.use(cors({
     origin: true, // Allow any origin
