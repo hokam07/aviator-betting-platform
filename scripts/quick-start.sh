@@ -45,7 +45,7 @@ done
 # Check Kafka
 echo -n "Checking Kafka... "
 for i in {1..30}; do
-  if docker exec $(docker ps -qf "name=kafka") kafka-topics.sh --bootstrap-server localhost:9092 --list > /dev/null 2>&1; then
+  if docker exec $(docker ps -qf "name=kafka") kafka-topics.sh --bootstrap-server localhost:9093 --list > /dev/null 2>&1; then
     echo "✅"
     break
   fi

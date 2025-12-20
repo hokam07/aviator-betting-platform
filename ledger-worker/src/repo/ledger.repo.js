@@ -11,6 +11,12 @@ const UPDATE_BALANCE_CONDITIONAL = `
   IF version = ?
 `;
 
+const INSERT_USER = `
+  INSERT INTO users (user_id, balance, pending_debits, version, created_at, last_activity)
+  VALUES (?, ?, ?, 0, toTimestamp(now()), toTimestamp(now()))
+  IF NOT EXISTS
+`;
+
 const INSERT_TXN = `
   INSERT INTO ledger_transactions (
     user_id, date_bucket, tx_id, amount, direction, status,
@@ -38,8 +44,10 @@ const CONFIRM_PENDING_DEBIT = `
 `;
 
 async function getUserBalance(userId) {
-    const result = await client.execute(GET_USER, [userId], { prepare: true });
-    return result.first() || { balance: 0, pending_debits: 0, version: 0 };
+    // Ensure userId is a valid UUID string
+    const uuidStr = typeof userId === 'string' ? userId : userId.toString();
+    const result = await client.execute(GET_USER, [uuidStr], { prepare: true });
+    return result.first() || { balance: 0, pending_debits: 0, version: -1 };
 }
 
 async function pendingDebit(userId, amount, betRoundId, dateBucket) {
@@ -59,7 +67,7 @@ async function pendingDebit(userId, amount, betRoundId, dateBucket) {
         newBalance, newPending, userId, user.version
     ], { prepare: true });
 
-    if (!result['[applied]']) {
+    if (!result.wasApplied()) {
         throw new Error('Balance update conflict - retry');
     }
 
@@ -81,6 +89,7 @@ async function processCallbackEvent(event) {
     // Validate and normalize amount to 2 decimal places
     const normalizedAmount = parseFloat(amount).toFixed(2);
     if (isNaN(normalizedAmount) || normalizedAmount < 0) {
+        console.error(`[ERROR] Invalid amount: ${amount}`);
         throw new Error(`Invalid amount: ${amount}`);
     }
 
@@ -195,11 +204,28 @@ async function processCallbackEvent(event) {
 }
 
 async function applyConditionalUpdate(userId, newBalance, newPending, expectedVersion) {
+    // If user doesn't exist (version = -1), insert them first
+    if (expectedVersion === -1) {
+        const insertResult = await client.execute(INSERT_USER, [
+            userId, newBalance, newPending
+        ], { prepare: true });
+
+        const applied = insertResult.wasApplied();
+
+        // Sync balance to Redis if insert was successful
+        if (applied) {
+            await syncBalanceToRedis(userId, newBalance);
+        }
+
+        return applied;
+    }
+
+    // Otherwise, do conditional update
     const result = await client.execute(UPDATE_BALANCE_CONDITIONAL, [
         newBalance, newPending, userId, expectedVersion
     ], { prepare: true });
 
-    const applied = result['[applied]'];
+    const applied = result.wasApplied();
 
     // Sync balance to Redis if update was successful
     if (applied) {

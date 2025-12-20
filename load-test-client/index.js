@@ -3,6 +3,7 @@ const io = require('socket.io-client');
 const yargs = require('yargs/yargs');
 const { hideBin } = require('yargs/helpers');
 const chalk = require('chalk');
+const crypto = require('crypto');
 
 const argv = yargs(hideBin(process.argv))
     .option('users', {
@@ -23,6 +24,12 @@ const argv = yargs(hideBin(process.argv))
         description: 'Gateway URL',
         default: 'http://localhost:3000'
     })
+    .option('callback', {
+        alias: 'c',
+        type: 'string',
+        description: 'Callback URL',
+        default: 'http://localhost:3001'
+    })
     .option('bet-interval', {
         alias: 'i',
         type: 'number',
@@ -34,14 +41,21 @@ const argv = yargs(hideBin(process.argv))
         description: 'Bet interval in ms (max)',
         default: 5000
     })
+    .option('init-wait', {
+        type: 'number',
+        description: 'Wait time in ms after user initialization',
+        default: 5000
+    })
     .argv;
 
 const GATEWAY_URL = argv.gateway;
+const CALLBACK_URL = argv.callback;
 const WS_URL = argv.gateway;
 const NUM_USERS = argv.users;
 const DURATION_SECONDS = argv.duration;
 const BET_INTERVAL_MIN = argv['bet-interval'];
 const BET_INTERVAL_MAX = argv['bet-interval-max'];
+const INIT_WAIT_MS = argv['init-wait'];
 
 // Stats tracking
 const stats = {
@@ -55,15 +69,26 @@ const stats = {
     endTime: null
 };
 
-// Generate test user IDs
+// Generate test user IDs with true randomness for fresh users each run
 function generateUserId(index) {
-    const base = '550e8400-e29b-41d4-a716-4466554400';
-    return `${base}${String(index).padStart(2, '0')}`;
+    return crypto.randomUUID();
 }
 
 // Random bet amount between 10 and 100
 function randomBetAmount() {
     return Math.floor(Math.random() * 91) + 10;
+}
+
+// Generate random initial balance for realistic scenarios
+function randomInitialBalance() {
+    const scenarios = [
+        0,      // 20% - No balance (edge case)
+        100,    // 20% - Low balance
+        500,    // 20% - Medium balance
+        1000,   // 20% - High balance
+        5000    // 20% - Very high balance (whale user)
+    ];
+    return scenarios[Math.floor(Math.random() * scenarios.length)];
 }
 
 // Random interval between min and max
@@ -85,10 +110,46 @@ class VirtualUser {
             // Check initial balance
             const response = await axios.get(`${GATEWAY_URL}/api/balance/${this.userId}`);
             this.balance = response.data.balance;
-            console.log(chalk.green(`✓ User ${this.userId} initialized with balance: ${this.balance}`));
+
+            // If balance is 0, initialize with random balance for realistic scenarios
+            if (this.balance === 0) {
+                const initialBalance = randomInitialBalance();
+
+                if (initialBalance > 0) {
+                    // Create user by simulating initial deposit via callback
+                    try {
+                        await axios.post(`${CALLBACK_URL}/callback`, {
+                            type: 'win',
+                            external_tx_id: crypto.randomUUID(),
+                            user_id: this.userId,
+                            bet_round_id: crypto.randomUUID(),
+                            amount: initialBalance
+                        }, {
+                            headers: { 'x-signature': 'dummy' },
+                            timeout: 5000
+                        });
+
+                        // Wait for Kafka processing (configurable)
+                        await new Promise(resolve => setTimeout(resolve, INIT_WAIT_MS));
+
+                        // Verify balance
+                        const balanceCheck = await axios.get(`${GATEWAY_URL}/api/balance/${this.userId}`);
+                        this.balance = balanceCheck.data.balance;
+                        console.log(chalk.green(`✓ User ${this.userId} initialized with balance: ${this.balance}`));
+                    } catch (initErr) {
+                        console.log(chalk.yellow(`⚠ User ${this.userId} initialization failed, starting with 0 balance`));
+                        this.balance = 0;
+                    }
+                } else {
+                    console.log(chalk.gray(`✓ User ${this.userId} initialized with 0 balance (edge case)`));
+                    this.balance = 0;
+                }
+            } else {
+                console.log(chalk.green(`✓ User ${this.userId} initialized with existing balance: ${this.balance}`));
+            }
         } catch (err) {
-            console.log(chalk.yellow(`⚠ User ${this.userId} not found, will be created on first bet`));
-            this.balance = 1000; // Assume initial balance
+            console.log(chalk.red(`✗ User ${this.userId} initialization error: ${err.message}`));
+            this.balance = 0;
         }
     }
 

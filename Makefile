@@ -1,34 +1,46 @@
-.PHONY: help up down build logs restart clean test-bet test-callback test-all load-test-setup load-test load-test-light load-test-medium load-test-heavy health monitor init-data
+# ========================
+# CONFIG
+# ========================
+
+KAFKA_BIN=/usr/bin
+CASSANDRA_CONTAINER=cassandra
+KAFKA_CONTAINER=kafka
+
+.PHONY: \
+	help up down build logs restart clean \
+	setup wait-services init-all \
+	test-bet test-callback test-all \
+	load-test-setup load-test load-test-light load-test-medium load-test-heavy \
+	health monitor init-data \
+	cassandra-init cassandra-status \
+	kafka-topics kafka-status
+
+# ========================
+# HELP
+# ========================
 
 help:
-	@echo "Available commands:"
 	@echo ""
-	@echo "Service Management:"
-	@echo "  make up              - Start all services"
-	@echo "  make down            - Stop all services"
-	@echo "  make build           - Build all services"
-	@echo "  make restart         - Restart all services"
-	@echo "  make logs            - View logs from all services"
-	@echo "  make clean           - Remove all containers and volumes"
+	@echo "Service:"
+	@echo "  make up              - Start containers only"
+	@echo "  make down            - Stop containers"
+	@echo "  make logs            - Follow logs"
+	@echo "  make clean           - Remove containers + volumes"
+	@echo ""
+	@echo "Setup:"
+	@echo "  make setup           - FULL setup (ready to test)"
 	@echo ""
 	@echo "Testing:"
-	@echo "  make test-bet        - Test bet placement"
-	@echo "  make test-callback   - Test callback processing"
-	@echo "  make test-all        - Run all basic tests"
-	@echo "  make load-test-setup - Install load test dependencies"
-	@echo "  make load-test       - Run load test (10 users, 60s)"
-	@echo "  make load-test-light - Run light load test (5 users, 30s)"
-	@echo "  make load-test-medium - Run medium load test (20 users, 60s)"
-	@echo "  make load-test-heavy - Run heavy load test (50 users, 120s)"
+	@echo "  make test-all"
 	@echo ""
-	@echo "Monitoring:"
-	@echo "  make health          - Check health of all services"
-	@echo "  make monitor         - Real-time monitoring dashboard"
+	@echo "Infra:"
+	@echo "  make cassandra-status"
+	@echo "  make kafka-status"
 	@echo ""
-	@echo "Utilities:"
-	@echo "  make init-data       - Initialize test data"
-	@echo ""
-	@echo "Documentation: See docs/ folder or README.md"
+
+# ========================
+# CORE
+# ========================
 
 up:
 	docker-compose up -d
@@ -48,62 +60,101 @@ restart:
 clean:
 	docker-compose down -v
 
+# ========================
+# SETUP (READY TO TEST)
+# ========================
+
+setup:
+	@echo "🚀 SETUP: starting system"
+	@$(MAKE) up
+	@$(MAKE) wait-services
+	@$(MAKE) cassandra-init
+	@$(MAKE) kafka-topics
+	@$(MAKE) init-data || true
+	@$(MAKE) health || true
+	@echo ""
+	@echo "✅ SYSTEM READY"
+	@echo "➡ Run: make test-all"
+
+wait-services:
+	@echo "⏳ Waiting for Cassandra..."
+	@until docker exec $(CASSANDRA_CONTAINER) cqlsh -e "DESCRIBE KEYSPACES" >/dev/null 2>&1; do \
+		echo "  Cassandra not ready..."; \
+		sleep 5; \
+	done
+	@echo "✓ Cassandra ready"
+
+	@echo "⏳ Waiting for Kafka (max 60s)..."
+	@for i in 1 2 3 4 5 6 7 8 9 10 11 12; do \
+		if docker exec $(KAFKA_CONTAINER) \
+			$(KAFKA_BIN)/kafka-broker-api-versions \
+			--bootstrap-server kafka:9093 >/dev/null 2>&1; then \
+			echo "✓ Kafka ready"; \
+			exit 0; \
+		fi; \
+		echo "  Kafka not ready... ($$((i*5)) s)"; \
+		sleep 5; \
+	done; \
+	echo "✗ Kafka not ready after 60s"; \
+	exit 1
+
+init-all:
+	@$(MAKE) cassandra-init
+	@$(MAKE) kafka-topics
+
+# ========================
+# TESTING
+# ========================
+
 test-bet:
-	@echo "Testing bet placement..."
 	curl -X POST http://localhost:3000/api/bet \
 		-H "Content-Type: application/json" \
 		-d '{"user_id":"550e8400-e29b-41d4-a716-446655440000","amount":100,"game_data":{"game":"aviator"}}'
 
 test-callback:
-	@echo "Testing callback..."
 	curl -X POST http://localhost:3001/callback \
 		-H "Content-Type: application/json" \
 		-H "x-signature: dummy" \
-		-d '{"type":"win","external_tx_id":"win-test-$(shell date +%s)","user_id":"550e8400-e29b-41d4-a716-446655440000","bet_round_id":"round-test-001","amount":500}'
+		-d '{"type":"win","external_tx_id":"test-$(shell date +%s)","user_id":"550e8400-e29b-41d4-a716-446655440000","bet_round_id":"round-1","amount":500}'
 
 test-all:
-	@echo "Running all tests..."
-	@echo ""
-	@echo "1. Testing bet placement..."
-	@curl -X POST http://localhost:3000/api/bet \
+	@echo "Running tests..."
+	@curl -s -X POST http://localhost:3000/api/bet \
 		-H "Content-Type: application/json" \
-		-d '{"user_id":"550e8400-e29b-41d4-a716-446655440000","amount":100,"game_data":{"game":"aviator"}}' \
-		2>/dev/null && echo "✓ Bet test passed" || echo "✗ Bet test failed"
-	@echo ""
+		-d '{"user_id":"550e8400-e29b-41d4-a716-446655440000","amount":100}' \
+		&& echo "✓ Bet OK" || echo "✗ Bet FAIL"
 	@sleep 2
-	@echo "2. Testing balance query..."
-	@curl http://localhost:3000/api/balance/550e8400-e29b-41d4-a716-446655440000 2>/dev/null \
-		&& echo "✓ Balance test passed" || echo "✗ Balance test failed"
-	@echo ""
+	@curl -s http://localhost:3000/api/balance/550e8400-e29b-41d4-a716-446655440000 \
+		&& echo "✓ Balance OK" || echo "✗ Balance FAIL"
 	@sleep 2
-	@echo "3. Testing callback..."
-	@curl -X POST http://localhost:3001/callback \
+	@curl -s -X POST http://localhost:3001/callback \
 		-H "Content-Type: application/json" \
 		-H "x-signature: dummy" \
-		-d '{"type":"win","external_tx_id":"win-test-$(shell date +%s)","user_id":"550e8400-e29b-41d4-a716-446655440000","bet_round_id":"round-test-001","amount":500}' \
-		2>/dev/null && echo "✓ Callback test passed" || echo "✗ Callback test failed"
-	@echo ""
-	@echo "All tests completed!"
+		-d '{"type":"win","external_tx_id":"test-$(shell date +%s)","amount":500}' \
+		&& echo "✓ Callback OK" || echo "✗ Callback FAIL"
+
+# ========================
+# LOAD TEST
+# ========================
 
 load-test-setup:
-	@echo "Installing load test dependencies..."
 	cd load-test-client && npm install
 
 load-test:
-	@echo "Running load test..."
 	cd load-test-client && npm test
 
 load-test-light:
-	@echo "Running light load test..."
 	cd load-test-client && npm run test:light
 
 load-test-medium:
-	@echo "Running medium load test..."
 	cd load-test-client && npm run test:medium
 
 load-test-heavy:
-	@echo "Running heavy load test..."
 	cd load-test-client && npm run test:heavy
+
+# ========================
+# MONITORING
+# ========================
 
 health:
 	@./scripts/health-check.sh
@@ -111,5 +162,46 @@ health:
 monitor:
 	@./scripts/monitor.sh
 
+# ========================
+# DATA
+# ========================
+
 init-data:
 	@./scripts/init-test-data.sh
+
+# ========================
+# CASSANDRA
+# ========================
+
+cassandra-init:
+	@echo "Initializing Cassandra schema..."
+	@docker exec -i $(CASSANDRA_CONTAINER) cqlsh < cassandra-init/schema.cql
+	@echo "✓ Cassandra schema ready"
+
+cassandra-status:
+	@docker exec $(CASSANDRA_CONTAINER) cqlsh -e "DESCRIBE KEYSPACES"
+	@docker exec $(CASSANDRA_CONTAINER) cqlsh -e "USE aviator; DESCRIBE TABLES;" || true
+
+# ========================
+# KAFKA
+# ========================
+
+kafka-topics:
+	@echo "Creating Kafka topics..."
+	@docker exec $(KAFKA_CONTAINER) $(KAFKA_BIN)/kafka-topics \
+		--bootstrap-server kafka:9093 \
+		--create --if-not-exists \
+		--topic bet-events \
+		--partitions 3 \
+		--replication-factor 1
+	@docker exec $(KAFKA_CONTAINER) $(KAFKA_BIN)/kafka-topics \
+		--bootstrap-server kafka:9093 \
+		--create --if-not-exists \
+		--topic aggregator-callbacks \
+		--partitions 3 \
+		--replication-factor 1
+	@echo "✓ Kafka topics ready"
+
+kafka-status:
+	@docker exec $(KAFKA_CONTAINER) $(KAFKA_BIN)/kafka-topics \
+		--bootstrap-server kafka:9093 --list

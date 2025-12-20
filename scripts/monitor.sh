@@ -28,7 +28,7 @@ while true; do
   
   # Kafka topics
   echo "📨 Kafka Topics:"
-  docker exec $(docker ps -qf "name=kafka") kafka-topics.sh --bootstrap-server localhost:9092 --list 2>/dev/null | grep -E "bet-events|aggregator-callbacks" || echo "Topics not found"
+  docker exec $(docker ps -qf "name=kafka") kafka-topics.sh --bootstrap-server localhost:9093 --list 2>/dev/null | grep -E "bet-events|aggregator-callbacks" || echo "Topics not found"
   echo ""
   
   # Redis keys count
