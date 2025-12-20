@@ -26,12 +26,41 @@ class BetResolver {
         this.multiplier = 2.0; // 2x payout on win
     }
 
+    /**
+     * Generates a random multiplier between 2x and 50x
+     * Realistic distribution: mostly mid-range, some low, rare high
+     */
+    generateMultiplier() {
+        // One 32-bit random integer
+        const rand32 = Math.floor(Math.random() * 0x100000000);
+
+        // Use top 4 bits for tier selection (high-quality randomness)
+        const tier = rand32 >>> 28; // 0–15
+
+        // Use lower 28 bits for fine-grained value within tier
+        const fine = (rand32 & 0x0FFFFFFF) / 0x10000000; // 0–0.999...
+
+        if (tier < 8) {
+            // 50% chance: 2.00x – 4.99x (most common)
+            return 2 + fine * 3;
+        } else if (tier < 13) {
+            // 31.25% chance: 5.00x – 14.99x
+            return 5 + fine * 10;
+        } else if (tier < 15) {
+            // 12.5% chance: 15.00x – 29.99x
+            return 15 + fine * 15;
+        } else {
+            // 6.25% chance: 30.00x – 50.00x (rare big wins)
+            return 30 + fine * 20;
+        }
+    }
+
     async start() {
         await consumer.connect();
         await consumer.subscribe({ topic: 'bet-events', fromBeginning: false });
 
-        console.log('🎰 Bet Resolver Worker running...');
-        console.log(`📊 Win Rate: ${this.winRate * 100}% | Multiplier: ${this.multiplier}x`);
+        console.log('Bet Resolver Worker running...');
+        console.log(`Win Rate: ${this.winRate * 100}% | Multiplier: ${this.multiplier}x`);
 
         await consumer.run({
             eachMessage: async ({ topic, partition, message }) => {
@@ -52,14 +81,15 @@ class BetResolver {
     async resolveBet(betEvent) {
         const { user_id, bet_round_id, amount } = betEvent;
 
-        console.log(`🎲 Resolving bet: ${bet_round_id.slice(0, 8)}... for user ${user_id.slice(0, 8)}... amount: $${amount}`);
+        console.log(`Resolving bet: ${bet_round_id.slice(0, 8)}... for user ${user_id.slice(0, 8)}... amount: $${amount}`);
 
         const didWin = Math.random() < this.winRate;
 
         try {
             if (didWin) {
                 // Send WIN callback
-                const winAmount = amount * this.multiplier;
+                const multiplier = this.generateMultiplier();
+                const winAmount = amount * multiplier;
                 await axios.post(CALLBACK_URL, {
                     type: 'win',
                     external_tx_id: `${bet_round_id}-win`,
