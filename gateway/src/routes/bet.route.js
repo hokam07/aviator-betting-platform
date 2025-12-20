@@ -1,6 +1,6 @@
 const express = require('express');
 const { processBet, getUserBalance } = require('../services/bet.service');
-
+const { betsPlaced } = require('../metrics');
 const router = express.Router();
 
 router.post('/bet', async (req, res) => {
@@ -12,6 +12,7 @@ router.post('/bet', async (req, res) => {
 
     try {
         const result = await processBet(user_id, amount, game_data);
+        betsPlaced.inc();
         res.status(200).json(result);
     } catch (err) {
         console.error('Bet processing error:', err);

@@ -12,7 +12,8 @@ async function initWebSocket(server) {
         },
         transports: ['websocket'],
         pingTimeout: 60000,
-        pingInterval: 25000
+        pingInterval: 25000,
+        maxHttpBufferSize: 1e6, // 1MB
     });
 
     // Apply Redis adapter for multi-node broadcasting

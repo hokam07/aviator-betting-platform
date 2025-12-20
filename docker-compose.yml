@@ -33,12 +33,11 @@ services:
     depends_on:
       - zookeeper
     ports:
-      - "9093:9093"  # Fixed: host:container same port
+      - "9093:9093"  
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
 
-      # Only one listener — simple and reliable
       KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9093
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9093
 
@@ -92,7 +91,7 @@ services:
     ports:
       - "3000:3000"
     deploy:
-      replicas: 3  # Will run 3 instances, all listening internally on 3000
+      replicas: 3  
     volumes:
       - ./gateway/src:/usr/src/app/src
     depends_on:
@@ -134,7 +133,7 @@ services:
   grafana:
     image: grafana/grafana:latest
     ports:
-      - "3100:3000"  # Changed to avoid conflict with gateway
+      - "3100:3000"  
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
     depends_on:

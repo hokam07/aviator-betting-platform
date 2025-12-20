@@ -4,6 +4,7 @@ const Decimal = require('decimal.js');
 const redis = require('../services/redis.client');
 const { syncBalanceToRedis } = require('../services/balance.sync');
 const { incUserStatsInRedis } = require('../services/stats.sync');
+const { winsProcessed } = require('../metrics');
 
 const GET_USER = 'SELECT balance, pending_debits, version FROM users WHERE user_id = ?';
 const UPDATE_BALANCE_CONDITIONAL = `
@@ -185,6 +186,7 @@ async function processCallbackEvent(event) {
                     amount: parseFloat(new Decimal(normalizedAmount).toString()),
                     timestamp: new Date().toISOString()
                 }));
+                winsProcessed.inc();
             }
             break;
         }
