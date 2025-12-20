@@ -1,5 +1,4 @@
 const express = require('express');
-const betRoute = require('./routes/bet.route');
 const userRoute = require('./routes/user.route');
 const { client } = require('./metrics');
 
@@ -12,7 +11,6 @@ app.get('/metrics', async (req, res) => {
 });
 
 const cors = require('cors');
-const { httpRequestsTotal } = require('./metrics');
 
 app.use(cors({
     origin: true, // Allow any origin
@@ -32,9 +30,6 @@ app.use((req, res, next) => {
 });
 
 app.get('/health', (req, res) => res.status(200).json({ status: 'ok' }));
-
-
-app.use('/api', betRoute);
-app.use('/api/user', userRoute);
+app.use('/api', userRoute);
 
 module.exports = app;

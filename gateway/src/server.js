@@ -29,10 +29,6 @@ init().then(() => {
                 if (producer) await producer.disconnect();
                 console.log('Kafka producer disconnected');
 
-                // Close Redis clients used in services
-                const { redis } = require('./services/bet.service'); // if exported, or just require and quit
-                // Actually bet.service might have its own redis instance
-                // But ws/socket.handler also has. 
                 // Let's just create a shared one later if needed, but for now:
                 const Redis = require('ioredis');
                 const globalRedis = new Redis(process.env.REDIS_URL || 'redis://redis:6379');
