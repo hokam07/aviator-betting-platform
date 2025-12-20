@@ -46,6 +46,15 @@ async function processBet(userId, amount, gameData) {
         console.error('Aggregator forward failed:', err.message);
     });
 
+    // Publish to public feed for live stats
+    redis.publish('public_feed', JSON.stringify({
+        type: 'bet',
+        user_id: userId,
+        amount: parseFloat(amount),
+        multiplier: gameData.multiplier || 1.0,
+        timestamp: new Date().toISOString()
+    }));
+
     return {
         bet_round_id: betRoundId,
         balance: newBalance,

@@ -1,50 +1,63 @@
-require('dotenv').config();
 const { Kafka } = require('kafkajs');
-const { processCallbackEvent } = require('./repo/ledger.repo');
-const { startBetEventsConsumer } = require('./consumer/bet.events.consumer');
-console.log("KAFKA_BROKERS::::")
+const { processCallbackEvent, pendingDebit, getUserBalance } = require('./repo/ledger.repo');
+const { syncBalanceToRedis } = require('./services/balance.sync');
+
 const kafkaClient = new Kafka({
-    brokers: [process.env.KAFKA_BROKERS]
+    brokers: [process.env.KAFKA_BROKERS || 'kafka:9093']
 });
 
-const consumer = kafkaClient.consumer({ groupId: 'ledger-group' });
+const consumer = kafkaClient.consumer({ groupId: 'ledger-unified-group' });
 
 async function main() {
     await consumer.connect();
+    console.log('Unified Ledger Consumer connected');
 
     // Verify Cassandra connection
     try {
         const client = require('./cassandra/client');
         await client.execute('SELECT now() FROM system.local');
-        console.log('Cassandra query test passed');
+        console.log('Cassandra connection verified');
     } catch (err) {
-        console.error('Cassandra query test failed', err);
+        console.error('Cassandra connection failed:', err);
     }
 
-    await consumer.subscribe({ topic: 'aggregator-callbacks', fromBeginning: false });
+    await consumer.subscribe({ topics: ['aggregator-callbacks', 'bet-events'], fromBeginning: false });
 
     await consumer.run({
-        eachMessage: async ({ message }) => {
+        eachMessage: async ({ topic, message }) => {
             try {
                 const event = JSON.parse(message.value.toString());
-                console.log('Processing event:', event.type, event.external_tx_id);
 
-                const result = await processCallbackEvent(event);
-                console.log('Result:', result);
+                if (topic === 'aggregator-callbacks') {
+                    console.log('Processing callback:', event.type, event.external_tx_id);
+                    const result = await processCallbackEvent(event);
+                    if (result.applied) {
+                        console.log('Callback applied:', event.external_tx_id);
+                    }
+                } else if (topic === 'bet-events') {
+                    if (event.type === 'bet_pending' || event.event_type === 'bet_pending') {
+                        console.log('Processing bet_pending:', event.bet_round_id);
+                        const dateBucket = new Date().toISOString().slice(0, 7);
+                        await pendingDebit(
+                            event.user_id,
+                            event.amount,
+                            event.bet_round_id,
+                            dateBucket
+                        );
 
-                // Balance sync is already handled in applyConditionalUpdate
-                // No need to sync again here to avoid redundant Redis calls
+                        // Sync balance to Redis
+                        const user = await getUserBalance(event.user_id);
+                        await syncBalanceToRedis(event.user_id, user.balance);
+                        console.log('Bet pending recorded:', event.bet_round_id);
+                    }
+                }
             } catch (err) {
-                console.error('Error processing event', err);
-                // Don't requeue critical failures — log and alert
+                console.error(`Error processing message from ${topic}:`, err);
             }
         }
     });
 
-    console.log('Ledger worker running...');
-
-    // Start bet events consumer
-    await startBetEventsConsumer();
+    console.log('Ledger worker running (Unified)...');
 }
 
 main().catch(console.error);

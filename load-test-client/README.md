@@ -1,64 +1,16 @@
-# Load Test Client
+# React + Vite
 
-Simulates multiple concurrent users placing bets on the betting system.
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
-## Installation
+Currently, two official plugins are available:
 
-```bash
-cd load-test-client
-npm install
-```
+- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
+- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
 
-## Usage
+## React Compiler
 
-### Basic test (10 users, 60 seconds)
-```bash
-npm test
-```
+The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
 
-### Light load (5 users, 30 seconds)
-```bash
-npm run test:light
-```
+## Expanding the ESLint configuration
 
-### Medium load (20 users, 60 seconds)
-```bash
-npm run test:medium
-```
-
-### Heavy load (50 users, 120 seconds)
-```bash
-npm run test:heavy
-```
-
-### Custom parameters
-```bash
-node index.js --users 30 --duration 90 --bet-interval 500 --bet-interval-max 3000
-```
-
-## Options
-
-- `--users, -u`: Number of concurrent users (default: 10)
-- `--duration, -d`: Test duration in seconds (default: 60)
-- `--gateway, -g`: Gateway URL (default: http://localhost:3000)
-- `--bet-interval, -i`: Minimum bet interval in ms (default: 1000)
-- `--bet-interval-max`: Maximum bet interval in ms (default: 5000)
-
-## What it tests
-
-- Concurrent bet placement from multiple users
-- Balance updates via WebSocket
-- System throughput and latency
-- Error handling and insufficient balance scenarios
-- Real-time balance synchronization
-
-## Metrics
-
-The test reports:
-- Total bets placed
-- Successful vs failed bets
-- Insufficient balance errors
-- Balance updates received via WebSocket
-- Throughput (bets/second)
-- Success rate
-- Error breakdown
+If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.

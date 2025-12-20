@@ -1,0 +1,14 @@
+{
+  "name": "simulation-scripts",
+  "version": "1.0.0",
+  "description": "Load testing and simulation scripts",
+  "scripts": {
+    "simulate": "node simulate-traffic.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "socket.io-client": "^4.6.1",
+    "yargs": "^17.7.2",
+    "chalk": "^4.1.2"
+  }
+}

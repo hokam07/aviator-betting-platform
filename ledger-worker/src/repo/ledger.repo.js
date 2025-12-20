@@ -1,47 +1,49 @@
 const client = require('../cassandra/client');
 const crypto = require('crypto');
 const Decimal = require('decimal.js');
+const redis = require('../services/redis.client');
 const { syncBalanceToRedis } = require('../services/balance.sync');
 
 const GET_USER = 'SELECT balance, pending_debits, version FROM users WHERE user_id = ?';
 const UPDATE_BALANCE_CONDITIONAL = `
   UPDATE users 
   SET balance = ?, pending_debits = ?, version = version + 1 
-  WHERE user_id = ? 
+  WHERE user_id = ?
   IF version = ?
 `;
 
 const INSERT_USER = `
-  INSERT INTO users (user_id, balance, pending_debits, version, created_at, last_activity)
-  VALUES (?, ?, ?, 0, toTimestamp(now()), toTimestamp(now()))
+  INSERT INTO users(user_id, balance, pending_debits, version, created_at, last_activity)
+  VALUES(?, ?, ?, 0, toTimestamp(now()), toTimestamp(now()))
   IF NOT EXISTS
 `;
 
+
 const INSERT_TXN = `
-  INSERT INTO ledger_transactions (
-    user_id, date_bucket, tx_id, amount, direction, status,
-    bet_round_id, external_tx_id, event_type, provider,
-    created_at
-  ) VALUES (
+  INSERT INTO ledger_transactions(
+        user_id, date_bucket, tx_id, amount, direction, status,
+        bet_round_id, external_tx_id, event_type, provider,
+        created_at
+    ) VALUES(
     ?, ?, now(), ?, ?, ?,
     ?, ?, ?, ?,
-    toTimestamp(now())
-  )
-`;
+        toTimestamp(now())
+    )
+        `;
 
 const CHECK_IDEMPOTENCY = 'SELECT processed_at FROM callback_idempotency WHERE provider = ? AND external_tx_id = ?';
 const MARK_IDEMPOTENT = `
-  INSERT INTO callback_idempotency (
-    provider, external_tx_id, processed_at, payload_hash, user_id, bet_round_id
-  ) VALUES (?, ?, toTimestamp(now()), ?, ?, ?)
-`;
+  INSERT INTO callback_idempotency(
+            provider, external_tx_id, processed_at, payload_hash, user_id, bet_round_id
+        ) VALUES(?, ?, toTimestamp(now()), ?, ?, ?)
+            `;
 
 const CONFIRM_PENDING_DEBIT = `
   UPDATE ledger_transactions 
   SET status = 'CONFIRMED', external_tx_id = ?
-  WHERE user_id = ? AND date_bucket = ? AND tx_id = ?
-  IF status = 'PENDING'
-`;
+    WHERE user_id = ? AND date_bucket = ? AND tx_id = ?
+        IF status = 'PENDING'
+            `;
 
 async function getUserBalance(userId) {
     // Ensure userId is a valid UUID string
@@ -54,7 +56,7 @@ async function pendingDebit(userId, amount, betRoundId, dateBucket) {
     // Validate and normalize amount to 2 decimal places
     const normalizedAmount = parseFloat(amount).toFixed(2);
     if (isNaN(normalizedAmount) || normalizedAmount < 0) {
-        throw new Error(`Invalid amount: ${amount}`);
+        throw new Error(`Invalid amount: ${amount} `);
     }
 
     const user = await getUserBalance(userId);
@@ -89,8 +91,8 @@ async function processCallbackEvent(event) {
     // Validate and normalize amount to 2 decimal places
     const normalizedAmount = parseFloat(amount).toFixed(2);
     if (isNaN(normalizedAmount) || normalizedAmount < 0) {
-        console.error(`[ERROR] Invalid amount: ${amount}`);
-        throw new Error(`Invalid amount: ${amount}`);
+        console.error(`[ERROR] Invalid amount: ${amount} `);
+        throw new Error(`Invalid amount: ${amount} `);
     }
 
     const payloadHash = crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
@@ -99,7 +101,7 @@ async function processCallbackEvent(event) {
     // Idempotency check
     const idempCheck = await client.execute(CHECK_IDEMPOTENCY, [provider, external_tx_id], { prepare: true });
     if (idempCheck.rowLength > 0) {
-        console.log(`Duplicate callback ignored: ${external_tx_id}`);
+        console.log(`Duplicate callback ignored: ${external_tx_id} `);
         return { status: 'duplicate' };
     }
 
@@ -113,7 +115,7 @@ async function processCallbackEvent(event) {
             let newPending = new Decimal(parseFloat(user.pending_debits || 0).toFixed(2));
 
             if (newBalance.lessThan(0)) {
-                console.warn(`Insufficient balance for bet: ${user_id}`);
+                console.warn(`Insufficient balance for bet: ${user_id} `);
                 return { applied: false, error: 'Insufficient balance' };
             }
 
@@ -126,6 +128,14 @@ async function processCallbackEvent(event) {
                     bet_round_id, external_tx_id, 'bet', provider
                 ], { prepare: true });
                 await client.execute(MARK_IDEMPOTENT, [provider, external_tx_id, payloadHash, user_id, bet_round_id], { prepare: true });
+
+                // Publish Bet to Public Feed
+                await redis.publish('public_feed', JSON.stringify({
+                    type: 'bet',
+                    user_id: user_id,
+                    amount: parseFloat(new Decimal(normalizedAmount).toString()),
+                    timestamp: new Date().toISOString()
+                }));
             }
             break;
         }
@@ -144,6 +154,14 @@ async function processCallbackEvent(event) {
                     bet_round_id, external_tx_id, 'win', provider
                 ], { prepare: true });
                 await client.execute(MARK_IDEMPOTENT, [provider, external_tx_id, payloadHash, user_id, bet_round_id], { prepare: true });
+
+                // Publish Win to Public Feed
+                await redis.publish('public_feed', JSON.stringify({
+                    type: 'win',
+                    user_id: user_id,
+                    amount: parseFloat(new Decimal(normalizedAmount).toString()),
+                    timestamp: new Date().toISOString()
+                }));
             }
             break;
         }

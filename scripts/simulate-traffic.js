@@ -207,14 +207,39 @@ class VirtualUser {
         }
     }
 
+    async sendChat() {
+        if (!this.socket) return;
+        const messages = [
+            "LFG!", "Big win!", "Rigged!", "To the moon 🚀", "Anyone winning?",
+            "Scam site", "Nice UI", "Give me luck", "Multiplier went crazy", "Lost it all :(",
+            "LETS GOOO!", "OMG!", "WTF", "Easy money", "Cashed out!", "YOLO",
+            "All in!", "Betting big", "Come on!", "Lucky streak!", "RIP balance",
+            "Insane!", "No way!", "Again!", "One more!", "Jackpot!", "GG",
+            "Unbelievable", "This is it!", "Here we go", "Boom!", "Crash incoming",
+            "Hold!", "Wait for it", "Now!", "Too early", "Too late", "Perfect timing"
+        ];
+        const text = messages[Math.floor(Math.random() * messages.length)];
+        this.socket.emit('chat_message', { user: `User-${this.userId.slice(0, 4)}`, text });
+    }
+
     async start() {
         this.active = true;
         this.connectWebSocket();
 
+        // More aggressive chat - 50% chance every 2 seconds
+        const chatInterval = setInterval(() => {
+            if (this.active && Math.random() > 0.5) {
+                this.sendChat();
+            }
+        }, 2000);
+
         while (this.active) {
             await this.placeBet();
-            await new Promise(resolve => setTimeout(resolve, randomInterval()));
+            // Faster betting - 500ms to 2000ms
+            await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1500));
         }
+
+        clearInterval(chatInterval);
     }
 
     stop() {

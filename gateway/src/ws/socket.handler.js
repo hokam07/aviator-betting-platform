@@ -29,28 +29,41 @@ function initWebSocket(server) {
             });
         });
 
+        // Chat handling
+        socket.on('chat_message', (msg) => {
+            // Broadcast to all clients
+            io.emit('chat_message', {
+                user: msg.user,
+                text: msg.text,
+                timestamp: new Date().toISOString()
+            });
+        });
+
         socket.on('disconnect', () => {
             console.log('Client disconnected:', socket.id);
         });
     });
 
-    // Subscribe to Redis pub/sub for balance updates
-    redisSub.subscribe('balance_updates', (err) => {
+    // Subscribe to Redis pub/sub for balance updates and public feed
+    redisSub.subscribe('balance_updates', 'public_feed', (err) => {
         if (err) {
             console.error('Redis subscribe error:', err);
         } else {
-            console.log('Subscribed to balance_updates channel');
+            console.log('Subscribed to Redis channels');
         }
     });
 
     redisSub.on('message', (channel, message) => {
-        if (channel === 'balance_updates') {
-            try {
-                const data = JSON.parse(message);
+        try {
+            const data = JSON.parse(message);
+
+            if (channel === 'balance_updates') {
                 io.to(`user:${data.user_id}`).emit('balance_update', data);
-            } catch (err) {
-                console.error('Error parsing balance update:', err);
+            } else if (channel === 'public_feed') {
+                io.emit('public_feed', data);
             }
+        } catch (err) {
+            console.error(`Error parsing message on ${channel}:`, err);
         }
     });
 
