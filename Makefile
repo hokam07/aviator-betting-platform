@@ -64,7 +64,7 @@ dashboard:
 	./start-dashboard.sh
 
 simulate:
-	node scripts/simulate-traffic.js --users 20 --duration 60
+	node scripts/simulate-traffic.js --users 2000 --duration 60
 
 # ========================
 # TESTING
