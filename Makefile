@@ -86,8 +86,7 @@ test-callback:
 # ========================
 
 cassandra-init:
-	@echo "Initializing Cassandra schema..."
-	@docker exec -i $(CASSANDRA_CONTAINER) cqlsh < cassandra-init/schema.cql
+	@docker exec -i $(CASSANDRA_CONTAINER) cqlsh < ledger-worker/db/schema.cql
 	@echo "✓ Cassandra schema ready"
 
 cassandra-status:
