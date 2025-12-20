@@ -3,6 +3,10 @@ const axios = require('axios');
 const aggregatorUrl = process.env.AGGREGATOR_URL || 'https://aggregator.example.com/api';
 
 async function placeBet(betData) {
+    if (aggregatorUrl.includes('example.com') || aggregatorUrl.includes('your-aggregator.com')) {
+        // Silently skip in simulation mode
+        return { status: 'simulated' };
+    }
     try {
         const response = await axios.post(`${aggregatorUrl}/bet`, betData, {
             timeout: 5000,

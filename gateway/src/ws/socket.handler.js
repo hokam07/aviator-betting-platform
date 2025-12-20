@@ -60,6 +60,7 @@ function initWebSocket(server) {
             if (channel === 'balance_updates') {
                 io.to(`user:${data.user_id}`).emit('balance_update', data);
             } else if (channel === 'public_feed') {
+                console.log(`[WS] Emitting public_feed: ${data.type} for ${data.user_id}`);
                 io.emit('public_feed', data);
             }
         } catch (err) {

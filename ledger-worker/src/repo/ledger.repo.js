@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const Decimal = require('decimal.js');
 const redis = require('../services/redis.client');
 const { syncBalanceToRedis } = require('../services/balance.sync');
+const { incUserStatsInRedis } = require('../services/stats.sync');
 
 const GET_USER = 'SELECT balance, pending_debits, version FROM users WHERE user_id = ?';
 const UPDATE_BALANCE_CONDITIONAL = `
@@ -44,6 +45,10 @@ const CONFIRM_PENDING_DEBIT = `
     WHERE user_id = ? AND date_bucket = ? AND tx_id = ?
         IF status = 'PENDING'
             `;
+
+const INC_STATS_BET = 'UPDATE user_stats SET total_bet_count = total_bet_count + 1, total_wagered_amount_cents = total_wagered_amount_cents + ? WHERE user_id = ?';
+const INC_STATS_WIN = 'UPDATE user_stats SET total_win_count = total_win_count + 1, total_won_amount_cents = total_won_amount_cents + ? WHERE user_id = ?';
+const INC_STATS_LOSS = 'UPDATE user_stats SET total_loss_count = total_loss_count + 1 WHERE user_id = ?';
 
 async function getUserBalance(userId) {
     // Ensure userId is a valid UUID string
@@ -129,6 +134,11 @@ async function processCallbackEvent(event) {
                 ], { prepare: true });
                 await client.execute(MARK_IDEMPOTENT, [provider, external_tx_id, payloadHash, user_id, bet_round_id], { prepare: true });
 
+                // Update Stats
+                const amountCents = Math.round(parseFloat(normalizedAmount) * 100);
+                await client.execute(INC_STATS_BET, [amountCents, user_id], { prepare: true });
+                await incUserStatsInRedis(user_id, { bet: true, bet_cents: amountCents });
+
                 // Publish Bet to Public Feed
                 await redis.publish('public_feed', JSON.stringify({
                     type: 'bet',
@@ -155,6 +165,11 @@ async function processCallbackEvent(event) {
                 ], { prepare: true });
                 await client.execute(MARK_IDEMPOTENT, [provider, external_tx_id, payloadHash, user_id, bet_round_id], { prepare: true });
 
+                // Update Stats
+                const amountCents = Math.round(parseFloat(normalizedAmount) * 100);
+                await client.execute(INC_STATS_WIN, [amountCents, user_id], { prepare: true });
+                await incUserStatsInRedis(user_id, { win: true, win_cents: amountCents });
+
                 // Publish Win to Public Feed
                 await redis.publish('public_feed', JSON.stringify({
                     type: 'win',
@@ -179,6 +194,10 @@ async function processCallbackEvent(event) {
                     bet_round_id, external_tx_id, 'loss', provider
                 ], { prepare: true });
                 await client.execute(MARK_IDEMPOTENT, [provider, external_tx_id, payloadHash, user_id, bet_round_id], { prepare: true });
+
+                // Update Stats
+                await client.execute(INC_STATS_LOSS, [user_id], { prepare: true });
+                await incUserStatsInRedis(user_id, { loss: true });
             }
             break;
         }

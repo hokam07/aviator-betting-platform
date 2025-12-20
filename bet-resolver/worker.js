@@ -103,8 +103,17 @@ resolver.start().catch(err => {
 });
 
 // Graceful shutdown
-process.on('SIGTERM', async () => {
-    console.log('Shutting down bet resolver...');
-    await consumer.disconnect();
-    process.exit(0);
-});
+const shutdown = async (signal) => {
+    console.log(`\n${signal} received. Shutting down bet resolver...`);
+    try {
+        await consumer.disconnect();
+        console.log('Kafka consumer disconnected');
+        process.exit(0);
+    } catch (err) {
+        console.error('Error during shutdown:', err);
+        process.exit(1);
+    }
+};
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

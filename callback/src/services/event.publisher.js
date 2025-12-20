@@ -45,4 +45,4 @@ async function publishCallbackEvent(event) {
     }
 }
 
-module.exports = { init, publishCallbackEvent };
+module.exports = { init, publishCallbackEvent, producer };

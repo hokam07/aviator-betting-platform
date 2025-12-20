@@ -90,6 +90,16 @@ CREATE TABLE analytics_counters (
     PRIMARY KEY (metric_date, metric_type)
 );
 
+// User-specific lifetime stats (Scalable counters)
+CREATE TABLE user_stats (
+    user_id uuid PRIMARY KEY,
+    total_bet_count counter,
+    total_win_count counter,
+    total_loss_count counter,
+    total_wagered_amount_cents counter, 
+    total_won_amount_cents counter
+);
+
 // Chat keyspace (decoupled)
 CREATE KEYSPACE IF NOT EXISTS chat
 WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};

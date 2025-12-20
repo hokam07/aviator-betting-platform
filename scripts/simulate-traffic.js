@@ -44,7 +44,7 @@ const argv = yargs(hideBin(process.argv))
     .option('init-wait', {
         type: 'number',
         description: 'Wait time in ms after user initialization',
-        default: 5000
+        default: 10000
     })
     .argv;
 
@@ -86,7 +86,8 @@ function randomInitialBalance() {
         100,    // 20% - Low balance
         500,    // 20% - Medium balance
         1000,   // 20% - High balance
-        5000    // 20% - Very high balance (whale user)
+        5000,   // 20% - Very high balance (whale user)
+        10000   // 20% - Massive balance
     ];
     return scenarios[Math.floor(Math.random() * scenarios.length)];
 }

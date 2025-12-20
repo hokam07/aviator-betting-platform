@@ -61,3 +61,38 @@ async function main() {
 }
 
 main().catch(console.error);
+
+// Graceful Shutdown
+const shutdown = async (signal) => {
+    console.log(`\n${signal} received. Shutting down gracefully...`);
+    try {
+        await consumer.disconnect();
+        console.log('Kafka consumer disconnected');
+
+        const redis = require('./services/redis.client');
+        await redis.quit();
+        console.log('Redis client disconnected');
+
+        const cassandraClient = require('./cassandra/client');
+        await cassandraClient.shutdown();
+        console.log('Cassandra client disconnected');
+
+        process.exit(0);
+    } catch (err) {
+        console.error('Error during shutdown:', err);
+        process.exit(1);
+    }
+};
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+    shutdown('uncaughtException');
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    shutdown('unhandledRejection');
+});
