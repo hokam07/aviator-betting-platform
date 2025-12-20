@@ -166,13 +166,13 @@ cassandra-shell:
 
 kafka-topics:
 	@echo "Creating Kafka topics..."
-	@docker exec $(KAFKA_CONTAINER) $(KAFKA_BIN)/kafka-topics.sh \
+	@docker exec $(KAFKA_CONTAINER) kafka-topics \
 		--bootstrap-server kafka:9093 \
 		--create --if-not-exists \
 		--topic bet-events \
 		--partitions 12 \
 		--replication-factor 1
-	@docker exec $(KAFKA_CONTAINER) $(KAFKA_BIN)/kafka-topics.sh \
+	@docker exec $(KAFKA_CONTAINER) kafka-topics \
 		--bootstrap-server kafka:9093 \
 		--create --if-not-exists \
 		--topic aggregator-callbacks \
@@ -181,7 +181,7 @@ kafka-topics:
 	@echo "✓ Kafka topics ready"
 
 kafka-status:
-	@docker exec $(KAFKA_CONTAINER) $(KAFKA_BIN)/kafka-topics.sh \
+	@docker exec $(KAFKA_CONTAINER) kafka-topics \
 		--bootstrap-server kafka:9093 --list
 
 kafka-consume:

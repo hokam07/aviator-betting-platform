@@ -2,7 +2,7 @@ const { Kafka } = require('kafkajs');
 
 const kafka = new Kafka({
     clientId: 'gateway-service',
-    brokers: [process.env.KAFKA_BROKERS || 'kafka:9093']
+    brokers: [process.env.KAFKA_BROKERS || 'kafka:9092']
 });
 
 const producer = kafka.producer();
