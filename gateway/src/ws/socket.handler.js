@@ -67,15 +67,31 @@ async function initWebSocket(server) {
             console.log(`User ${userId} subscribed (socket ${socket.id})`);
 
             try {
-                const cachedBalance = await redis.get(`balance:${userId}`);
-                if (cachedBalance) {
-                    io.to(userId).emit('balance_update', {
+                let cachedBalance = await redis.get(`balance:${userId}`);
+
+                // AUTO-FUNDING: If new user (no balance), credit $1000
+                if (!cachedBalance) {
+                    console.log(`[WS] Auto-funding new user ${userId} with $1000`);
+                    const axios = require('axios');
+                    const CALLBACK_URL = process.env.AGGREGATOR_CALLBACK_URL || 'http://callback:3000/callback';
+                    await axios.post(CALLBACK_URL, {
+                        type: 'win',
                         user_id: userId,
-                        balance: parseFloat(cachedBalance)
-                    });
+                        amount: 1000,
+                        external_tx_id: `auto-fund-${userId}`,
+                        bet_round_id: 'initial',
+                        provider: 'system'
+                    }, { headers: { 'x-signature': 'dummy' } });
+
+                    cachedBalance = "1000.00";
                 }
+
+                io.to(userId).emit('balance_update', {
+                    user_id: userId,
+                    balance: parseFloat(cachedBalance)
+                });
             } catch (err) {
-                console.error('Redis balance fetch error:', err);
+                console.error('Redis balance/auto-funding error:', err);
             }
         });
 
@@ -90,14 +106,25 @@ async function initWebSocket(server) {
         // Interactive Gaming Handlers
         socket.on('place_bet', async (data) => {
             const { userId, amount, roundId } = data;
+
+            // Validate amount
+            if (!amount || amount <= 0) {
+                return socket.emit('error', { message: 'Invalid bet amount' });
+            }
+
             console.log(`[WS] Bet placed: User ${userId} for round ${roundId} amount ${amount}`);
 
-            // In a real system, we would validate round state here
-            // and write to a 'bets' collection in Redis for that round.
-            // For now, we'll hit the Callback service to simulate the financial flow
             try {
                 const axios = require('axios');
                 const CALLBACK_URL = process.env.AGGREGATOR_CALLBACK_URL || 'http://callback:3000/callback';
+
+                // Track bet in Redis to prevent multiple bets per round per socket (basic lock)
+                const betKey = `active_bet:${roundId}:${userId}`;
+                const alreadyBet = await redis.get(betKey);
+                if (alreadyBet) {
+                    return socket.emit('error', { message: 'Already placed a bet for this round' });
+                }
+
                 await axios.post(CALLBACK_URL, {
                     type: 'bet',
                     user_id: userId,
@@ -106,8 +133,12 @@ async function initWebSocket(server) {
                     bet_round_id: roundId
                 }, { headers: { 'x-signature': 'dummy' } });
 
+                // Mark as bet placed in Redis (expires in 2 mins)
+                await redis.set(betKey, amount, 'EX', 120);
+
                 socket.emit('bet_confirmed', { roundId, amount });
             } catch (err) {
+                console.error('[WS] Bet placement failed:', err.message);
                 socket.emit('error', { message: 'Failed to place bet' });
             }
         });
@@ -117,19 +148,36 @@ async function initWebSocket(server) {
             console.log(`[WS] Cash out: User ${userId} at ${multiplier}x`);
 
             try {
+                // Get the original bet amount from Redis
+                const betKey = `active_bet:${roundId}:${userId}`;
+                const betAmountStr = await redis.get(betKey);
+
+                if (!betAmountStr) {
+                    return socket.emit('error', { message: 'No active bet found for this round' });
+                }
+
+                const betAmount = parseFloat(betAmountStr);
+                const winAmount = (betAmount * multiplier).toFixed(2);
+
+                console.log(`[WS] Processing win for ${userId}: $${betAmount} x ${multiplier} = $${winAmount}`);
+
                 const axios = require('axios');
                 const CALLBACK_URL = process.env.AGGREGATOR_CALLBACK_URL || 'http://callback:3000/callback';
                 await axios.post(CALLBACK_URL, {
                     type: 'win',
                     user_id: userId,
-                    amount: multiplier, // In this simplified test, we use multiplier as win amount or similar
+                    amount: parseFloat(winAmount),
                     external_tx_id: `win-${roundId}-${userId}`,
                     bet_round_id: roundId,
                     is_cashout: true
                 }, { headers: { 'x-signature': 'dummy' } });
 
-                socket.emit('cashout_confirmed', { multiplier });
+                // Remove active bet so they can't cash out twice
+                await redis.del(betKey);
+
+                socket.emit('cashout_confirmed', { multiplier, winAmount: parseFloat(winAmount) });
             } catch (err) {
+                console.error('[WS] Cash out failed:', err.message);
                 socket.emit('error', { message: 'Cash out failed' });
             }
         });

@@ -16,8 +16,6 @@ const socketInstance = io(WS_URL, {
 function App() {
   const winTimeoutRef = React.useRef(null);
   const [toastKey, setToastKey] = useState(0);
-  const [totalBets, setTotalBets] = useState(0);
-  const [totalWon, setTotalWon] = useState(0);
   const [messages, setMessages] = useState([]);
   const [bets, setBets] = useState([]);
   const [lastEvent, setLastEvent] = useState(null);
@@ -26,14 +24,56 @@ function App() {
   const [winAmount, setWinAmount] = useState(0);
   const [isConnected, setIsConnected] = useState(socketInstance.connected);
 
+  const [userId] = useState(() => {
+    const cached = localStorage.getItem('aviator_user_id');
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (cached && uuidRegex.test(cached)) return cached;
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  });
+
+  const [balance, setBalance] = useState(0);
+  const [stats, setStats] = useState({
+    totalBets: 0,
+    totalWagered: 0,
+    totalWon: 0
+  });
+
   useEffect(() => {
+    localStorage.setItem('aviator_user_id', userId);
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const syncData = () => {
+      console.log(`[APP] Syncing data for user: ${userId}`);
+      socketInstance.emit('subscribe', userId);
+
+      // Initial fetch
+      fetch(`http://localhost:3000/api/balance/${userId}`)
+        .then(r => r.json()).then(d => setBalance(d.balance)).catch(console.error);
+      fetch(`http://localhost:3000/api/user/stats/${userId}`)
+        .then(r => r.json()).then(d => setStats({
+          totalBets: d.total_bet_count || 0,
+          totalWagered: d.total_wagered_amount || 0,
+          totalWon: d.total_won_amount || 0
+        })).catch(console.error);
+    };
+
     const handleConnect = () => {
       console.log('Connected to Gateway WS');
       setIsConnected(true);
+      syncData();
     };
 
-    const handleDisconnect = () => {
-      setIsConnected(false);
+    const handleBalanceUpdate = (data) => {
+      if (data.user_id === userId) {
+        console.log(`[APP] Balance Update: ${data.balance}`);
+        setBalance(data.balance);
+      }
     };
 
     const handlePublicFeed = (data) => {
@@ -42,11 +82,22 @@ function App() {
       setLastEvent(data);
 
       if (data.type === 'bet') {
-        setTotalBets(prev => prev + 1);
         setBets(prev => [data, ...prev].slice(0, 50));
+        if (data.user_id === userId) {
+          setStats(prev => ({
+            ...prev,
+            totalBets: prev.totalBets + 1,
+            totalWagered: prev.totalWagered + (parseFloat(data.amount) || 0)
+          }));
+        }
       } else if (data.type === 'win') {
-        setTotalWon(prev => prev + (parseFloat(data.amount) || 0));
         setBets(prev => [{ ...data, type: 'win' }, ...prev].slice(0, 50));
+        if (data.user_id === userId) {
+          setStats(prev => ({
+            ...prev,
+            totalWon: prev.totalWon + (parseFloat(data.amount) || 0)
+          }));
+        }
 
         if (data.amount >= 100) {
           console.log(`[APP] Showing Win Toast for $${data.amount}`);
@@ -67,17 +118,21 @@ function App() {
     };
 
     socketInstance.on('connect', handleConnect);
-    socketInstance.on('disconnect', handleDisconnect);
+    socketInstance.on('disconnect', () => setIsConnected(false));
     socketInstance.on('public_feed', handlePublicFeed);
     socketInstance.on('chat_message', handleChatMessage);
+    socketInstance.on('balance_update', handleBalanceUpdate);
+
+    // Initial sync if already connected
+    if (socketInstance.connected) syncData();
 
     return () => {
       socketInstance.off('connect', handleConnect);
-      socketInstance.off('disconnect', handleDisconnect);
       socketInstance.off('public_feed', handlePublicFeed);
       socketInstance.off('chat_message', handleChatMessage);
+      socketInstance.off('balance_update', handleBalanceUpdate);
     };
-  }, []);
+  }, [userId]);
 
   return (
     <div className="min-h-screen bg-gray-900 text-white p-4 md:p-8 font-sans transition-all relative overflow-x-hidden">
@@ -131,30 +186,30 @@ function App() {
           </div>
         </div>
 
-        {/* Control Section */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-          <div className="xl:col-span-2 h-full">
-            <AviatorGame socket={socketInstance} />
-          </div>
-          <div className="h-full">
-            <LiveStats totalBets={totalBets} totalWon={totalWon} />
-          </div>
+        {/* TOP CONTROLS */}
+        <div className="w-full space-y-6">
+          <MainUserControl socket={socketInstance} userId={userId} balance={balance} stats={stats} />
+          <LiveStats totalBets={stats.totalBets} totalWon={stats.totalWon} />
         </div>
 
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-          <div className="xl:col-span-3">
-            <MainUserControl socket={socketInstance} />
-          </div>
-        </div>
+        {/* MAIN: 3-Column Layout */}
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start pb-8">
 
-        {/* Data Feed Section */}
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8 pb-8">
-          <div className="xl:col-span-2">
+          {/* LEFT: Live Feed (Bet Ticker) */}
+          <div className="xl:col-span-3 h-[850px]">
             <BetTicker bets={bets} />
           </div>
-          <div>
+
+          {/* MIDDLE: The Game */}
+          <div className="xl:col-span-6 h-[850px]">
+            <AviatorGame socket={socketInstance} userId={userId} balance={balance} />
+          </div>
+
+          {/* RIGHT: Live Chat */}
+          <div className="xl:col-span-3 h-[850px]">
             <LiveChat messages={messages} socket={socketInstance} />
           </div>
+
         </div>
 
       </div>

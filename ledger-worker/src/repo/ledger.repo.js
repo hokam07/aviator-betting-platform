@@ -141,13 +141,7 @@ async function processCallbackEvent(event) {
                     console.error(`Stats sync failed for user ${user_id}:`, statsErr);
                 }
 
-                // Publish Bet to Public Feed
-                await redis.publish('public_feed', JSON.stringify({
-                    type: 'bet',
-                    user_id: user_id,
-                    amount: parseFloat(new Decimal(normalizedAmount).toString()),
-                    timestamp: new Date().toISOString()
-                }));
+                // Stats updated above, balance synced to redis
             }
             break;
         }
@@ -176,13 +170,7 @@ async function processCallbackEvent(event) {
                     console.error(`Stats sync failed for user ${user_id}:`, statsErr);
                 }
 
-                // Publish Win to Public Feed
-                await redis.publish('public_feed', JSON.stringify({
-                    type: 'win',
-                    user_id: user_id,
-                    amount: parseFloat(new Decimal(normalizedAmount).toString()),
-                    timestamp: new Date().toISOString()
-                }));
+                // Stats updated above, balance synced to redis
                 winsProcessed.inc();
             }
             break;
