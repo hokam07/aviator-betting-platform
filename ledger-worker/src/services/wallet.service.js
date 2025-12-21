@@ -1,5 +1,4 @@
 const client = require('../cassandra/client');
-const Decimal = require('decimal.js');
 
 const GET_USER = 'SELECT balance, pending_debits, version FROM users WHERE user_id = ?';
 const CREATE_USER = `

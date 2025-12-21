@@ -72,18 +72,7 @@ async function initWebSocket(server) {
                 // AUTO-FUNDING: If new user (no balance), credit $1000
                 if (!cachedBalance) {
                     console.log(`[WS] Auto-funding new user ${userId} with $1000`);
-                    const axios = require('axios');
-                    const CALLBACK_URL = process.env.AGGREGATOR_CALLBACK_URL || 'http://callback:3000/callback';
-                    await axios.post(CALLBACK_URL, {
-                        type: 'win',
-                        user_id: userId,
-                        amount: 1000,
-                        external_tx_id: `auto-fund-${userId}`,
-                        bet_round_id: 'initial',
-                        provider: 'system'
-                    }, { headers: { 'x-signature': 'dummy' } });
-
-                    cachedBalance = "1000.00";
+                    cachedBalance = "0";
                 }
 
                 io.to(userId).emit('balance_update', {

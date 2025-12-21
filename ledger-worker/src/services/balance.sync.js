@@ -28,13 +28,6 @@ async function syncBalanceToRedis(userId, balance = null) {
             timestamp: new Date().toISOString()
         }));
 
-        // Detect if this was a win (balance increase) - simpler heuristic for now
-        // Ideally we pass event type, but balance.sync is generic. 
-        // For now, let's rely on the worker to publish public wins explicitly if needed.
-        // BUT, the task says update balance.sync. Let's do a best effort or move logic to ledger.repo.
-        // BETTER APPROACH: Update ledger.repo.js to publish 'win' to 'public_feed' directly.
-        // Balance sync is for USER private balance. Public feed is separate.
-
         console.log(`Balance synced for user ${userId}: ${finalBalance}`);
         return finalBalance;
     } catch (err) {

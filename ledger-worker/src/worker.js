@@ -1,19 +1,15 @@
 const { Kafka } = require('kafkajs');
-const { processCallbackEvent, getUserBalance } = require('./repo/ledger.repo');
-const { syncBalanceToRedis } = require('./services/balance.sync');
+const { processCallbackEvent } = require('./repo/ledger.repo');
 
 const kafkaClient = new Kafka({
     brokers: [process.env.KAFKA_BROKERS || 'kafka:9093']
 });
 
 const consumer = kafkaClient.consumer({ groupId: 'ledger-unified-group' });
-const producer = kafkaClient.producer();
 
 async function main() {
     await consumer.connect();
-    await producer.connect();
     console.log('Unified Ledger Consumer connected');
-    console.log('Ledger Producer connected');
 
     // Verify Cassandra connection
     try {
@@ -31,21 +27,8 @@ async function main() {
         eachMessage: async ({ topic, message }) => {
             try {
                 const event = JSON.parse(message.value.toString());
-
                 console.log('Processing callback:', event.type, event.external_tx_id);
-                const result = await processCallbackEvent(event);
-
-                if (result.applied) {
-                    console.log('Callback applied:', event.external_tx_id);
-
-                    // If this was a 'bet' event, normally we might publish to other services.
-                    // BUT: We disabled publishing to 'bet-events' because 'bet-resolver' was auto-playing
-                    // and resolving bets immediately, breaking the Aviator manual cash-out flow.
-                    if (event.type === 'bet') {
-                        // await producer.send({...}); 
-                        console.log('Bet persisted. Waiting for manual cash-out (Auto-resolution disabled).');
-                    }
-                }
+                await processCallbackEvent(event);
             } catch (err) {
                 console.error(`Error processing message from ${topic}:`, err);
             }
@@ -63,9 +46,6 @@ const shutdown = async (signal) => {
     try {
         await consumer.disconnect();
         console.log('Kafka consumer disconnected');
-
-        await producer.disconnect();
-        console.log('Kafka producer disconnected');
 
         const redis = require('./services/redis.client');
         await redis.quit();
