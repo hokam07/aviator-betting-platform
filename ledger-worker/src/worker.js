@@ -38,25 +38,12 @@ async function main() {
                 if (result.applied) {
                     console.log('Callback applied:', event.external_tx_id);
 
-                    // If this was a 'bet' event, publish to bet-events topic for bet resolver
+                    // If this was a 'bet' event, normally we might publish to other services.
+                    // BUT: We disabled publishing to 'bet-events' because 'bet-resolver' was auto-playing
+                    // and resolving bets immediately, breaking the Aviator manual cash-out flow.
                     if (event.type === 'bet') {
-                        await producer.send({
-                            topic: 'bet-events',
-                            messages: [
-                                {
-                                    key: event.user_id?.toString() || 'unknown',
-                                    value: JSON.stringify({
-                                        type: 'bet_pending',
-                                        user_id: event.user_id,
-                                        bet_round_id: event.bet_round_id,
-                                        amount: event.amount,
-                                        timestamp: new Date().toISOString()
-                                    }),
-                                    timestamp: Date.now().toString()
-                                }
-                            ]
-                        });
-                        console.log('Published bet_pending to bet-events for resolver:', event.bet_round_id);
+                        // await producer.send({...}); 
+                        console.log('Bet persisted. Waiting for manual cash-out (Auto-resolution disabled).');
                     }
                 }
             } catch (err) {

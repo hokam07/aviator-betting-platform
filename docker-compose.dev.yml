@@ -7,4 +7,3 @@ include:
   - path: ./gateway/docker-compose.dev.yml
   - path: ./ledger-worker/docker-compose.dev.yml
   - path: ./callback/docker-compose.dev.yml
-  - path: ./bet-resolver/docker-compose.dev.yml

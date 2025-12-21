@@ -17,8 +17,9 @@ const AviatorGame = ({ socket, userId, balance }) => {
     const [winAmount, setWinAmount] = useState(0);
     const [betAmount, setBetAmount] = useState(10);
 
-    const animationFrameRef = useRef();
     const planeImgRef = useRef(null);
+    const animationFrameRef = useRef(null);
+    const flyAwayRef = useRef(null); // Animation state ref
 
     useEffect(() => {
         if (!socket || !userId) return;
@@ -60,7 +61,7 @@ const AviatorGame = ({ socket, userId, balance }) => {
 
     useEffect(() => {
         const canvas = canvasRef.current;
-        if (!canvas) return;
+        const container = canvas.parentElement;
         const ctx = canvas.getContext('2d');
 
         const updateSize = () => {
@@ -77,63 +78,122 @@ const AviatorGame = ({ socket, userId, balance }) => {
             const height = canvas.offsetHeight;
             ctx.clearRect(0, 0, width, height);
 
-            // 1. Draw Grid (Aesthetic)
-            ctx.strokeStyle = '#2d3748';
-            ctx.lineWidth = 0.5;
-            for (let x = 0; x < width; x += 60) {
-                ctx.beginPath();
-                ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
-            }
-            for (let y = 0; y < height; y += 60) {
-                ctx.beginPath();
-                ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
-            }
-
             if (gameState.status === 'FLYING' || gameState.status === 'CRASHED') {
                 const multiplier = gameState.multiplier;
 
-                // Curve calculation
+                // --- Parallax & Camera Logic ---
                 const t = Math.log(multiplier) / 0.1;
-                const maxX = 12; // Roughly 12 seconds / 3.3x visible range
-                const maxY = 4.0;
+                // Virtual coordinates (where the plane implies it is in the world)
+                const virtualX = (t / 12) * (width * 0.85); // Matches previous scaling
+                const virtualY = (multiplier / 4.0) * (height * 0.7);
 
-                const targetX = (t / maxX) * (width * 0.85);
-                const targetY = height - (multiplier / maxY) * (height * 0.7);
+                // Camera Position (clamped so plane stays in view)
+                // If virtual pos > screen center (approx), shift camera
+                const viewPortPadX = width * 0.5;
+                const viewPortPadY = height * 0.5;
 
-                // 2. Draw Glow Sub-layer
+                const cameraX = Math.max(0, virtualX - viewPortPadX);
+                const cameraY = Math.max(0, virtualY - viewPortPadY);
+
+                // Screen Coordinates (where to draw relative to camera)
+                const screenX = virtualX - cameraX;
+                const screenY = height - (virtualY - cameraY); // Invert Y for canvas
+
+                // 1. Draw Parallax Grid
+                ctx.strokeStyle = '#2d3748';
+                ctx.lineWidth = 0.5;
+
+                // Offset grid based on camera position for scrolling effect
+                const gridSize = 60;
+                const offsetX = -(cameraX % gridSize);
+                const offsetY = (cameraY % gridSize);
+
+                for (let x = offsetX; x < width; x += gridSize) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke();
+                }
+                for (let y = offsetY; y < height; y += gridSize) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke();
+                }
+
+                // 2. Draw Glow Sub-layer (Curve)
                 ctx.shadowBlur = 20;
                 ctx.shadowColor = '#ff3366';
                 ctx.strokeStyle = '#ff3366';
                 ctx.lineWidth = 4;
                 ctx.beginPath();
-                ctx.moveTo(0, height);
 
+                // Start drawing curve from t=0 relative to current camera
+                // We need to project every point of the curve to screen space
+                let started = false;
                 for (let i = 0; i <= t; i += 0.1) {
                     const m = Math.pow(Math.E, i * 0.1);
-                    const px = (i / maxX) * (width * 0.85);
-                    const py = height - (m / maxY) * (height * 0.7);
-                    ctx.lineTo(px, py);
+                    const vx = (i / 12) * (width * 0.85);
+                    const vy = (m / 4.0) * (height * 0.7);
+
+                    const sx = vx - cameraX;
+                    const sy = height - (vy - cameraY);
+
+                    // Optimization: only draw if within or near viewport
+                    if (sx >= -50 && sx <= width + 50 && sy >= -50 && sy <= height + 50) {
+                        if (!started) {
+                            ctx.moveTo(sx, sy);
+                            started = true;
+                        } else {
+                            ctx.lineTo(sx, sy);
+                        }
+                    }
                 }
                 ctx.stroke();
                 ctx.shadowBlur = 0;
 
-                // 3. Draw Plane Sprite (SVG Path)
-                if (gameState.status !== 'CRASHED') {
+                // 3. Draw Plane Sprite
+                const isCrashed = gameState.status === 'CRASHED';
+
+                if (gameState.status === 'FLYING' || isCrashed) {
                     ctx.save();
-                    ctx.translate(targetX, targetY);
-                    ctx.rotate(Math.PI / 2 + Math.PI / 8); // Rotate to point right-up
+
+                    let drawX = screenX;
+                    let drawY = screenY;
+                    let rotation = Math.min(Math.PI / 4, Math.atan(multiplier * 0.5));
+
+                    // Fly Away Animation State
+                    if (isCrashed) {
+                        if (!flyAwayRef.current) {
+                            flyAwayRef.current = Date.now();
+                        }
+                        const elapsed = (Date.now() - flyAwayRef.current) / 1000; // seconds
+
+                        // Accelerate up and right
+                        drawX += elapsed * 800;  // rapid right movement
+                        drawY -= elapsed * 800;  // rapid up movement
+                        rotation += elapsed * 2; // spin slightly
+                    } else {
+                        flyAwayRef.current = null; // Reset when not crashed
+                    }
+
+                    ctx.translate(drawX, drawY);
+
+                    // Rotate based on slope of curve at current t
+                    ctx.rotate(-rotation); // Point along curve
+
+                    if (isCrashed) {
+                        // If crashed, maybe rotate slightly more up
+                        ctx.rotate(-0.5);
+                    }
+
                     ctx.scale(1.5, 1.5);
 
                     // Plane Shadow/Glow
                     ctx.shadowBlur = 10;
                     ctx.shadowColor = '#fff';
 
-                    // Plane Body (Draw Image if loaded, fallback to SVG)
+                    // Plane Body
                     if (planeImgRef.current) {
                         ctx.save();
-                        // Reset parent rotation effect for the image
-                        // Correct for biplane facing right -> rotate to face up-right
-                        ctx.rotate(-Math.PI / 2 - Math.PI / 6);
+                        // Adjust image rotation if needed
+                        ctx.rotate(0.2);
                         const size = 120;
                         ctx.drawImage(planeImgRef.current, -size / 2, -size / 2, size, size);
                         ctx.restore();
@@ -190,7 +250,7 @@ const AviatorGame = ({ socket, userId, balance }) => {
     };
 
     return (
-        <div className="flex flex-col gap-6 w-full max-w-7xl mx-auto pb-8 animate-in fade-in duration-700">
+        <div className="flex flex-col gap-4 w-full h-full animate-in fade-in duration-700 overflow-hidden">
             {/* COMPACT GAME PAN */}
             <div className="relative w-full h-[450px] bg-[#0c121d] rounded-[32px] border-4 border-[#1e293b] overflow-hidden shadow-[0_35px_60px_-15px_rgba(0,0,0,0.6)]">
 

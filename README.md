@@ -27,8 +27,7 @@ What this does:
 | Path | Description |
 | --- | --- |
 | `gateway/`, `callback/` | The API surface area |
-| `ledger-worker/` | The heavy-duty financial processor |
-| `bet-resolver/` | Simulation engine for game outcomes |
+| `ledger-worker/` | The heavy-duty financial processor (Bets & Manual Wins) |
 | `infra/` | Docker Compose for Redis, Kafka, Cassandra |
 | `monitoring/` | Prometheus & Grafana configs |
 | `docs/` | **[NEW]** AWS Deployment Guides |
@@ -84,7 +83,6 @@ make simulate-high   # ~5000 users
 | Gateway           | User-facing API + WebSocket fan-out (output only)      |
 | Callback          | Receives external game results (input only)            |
 | Ledger Worker     | Single Kafka consumer group → balance, bets, wins     |
-| Bet Resolver      | Simulation-only win/loss generator                    |
 | Kafka             | Durable event log, replay, ordering                   |
 | Cassandra         | Immutable financial ledger                            |
 | Redis             | Fast ephemeral state (balances, live stats)           |

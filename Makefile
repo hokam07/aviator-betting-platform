@@ -69,7 +69,7 @@ help:
 	@echo ""
 	@echo "Scaling:"
 	@echo "  make scale-gateway N=5  - Scale gateway to N replicas"
-	@echo "  make scale-workers N=6  - Scale ledger + resolver workers"
+	@echo "  make scale-workers N=6  - Scale ledger + game engine workers"
 	@echo ""
 	@echo "Monitoring:"
 	@echo "  make prometheus      - Open Prometheus UI"
