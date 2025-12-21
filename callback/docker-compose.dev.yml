@@ -1,0 +1,17 @@
+services:
+  callback:
+    build: .
+    container_name: callback-dev
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./src:/usr/src/app/src
+      - ./package.json:/usr/src/app/package.json
+      - ./package-lock.json:/usr/src/app/package-lock.json
+    depends_on:
+      - kafka
+    environment:
+      - KAFKA_BROKERS=kafka:9093
+      - HMAC_SECRET=dev-secret
+      - NODE_ENV=development
+    restart: unless-stopped

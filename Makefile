@@ -130,10 +130,10 @@ dashboard:
 	./start-dashboard.sh
 
 simulate:
-	node scripts/simulate-traffic.js --users 2000 --duration 60
+	cd scripts && node simulate-traffic.js --users 2000 --duration 60
 
 simulate-high:
-	node scripts/simulate-traffic.js --users 5000 --duration 120
+	cd scripts && node simulate-traffic.js --users 5000 --duration 120
 
 # ========================
 # TESTING
@@ -307,7 +307,12 @@ bootstrap:
 	@echo "📦 Creating Kafka topics..."
 	@$(MAKE) kafka-topics
 
-	@echo "📊 Final system status:"
+	@echo "� Installing simulation dependencies..."
+	@cd scripts && npm install
+	@echo "📦 Installing dashboard dependencies..."
+	@cd load-test-client && npm install
+
+	@echo "�📊 Final system status:"
 	@$(MAKE) status
 
 	$(call check_failures)

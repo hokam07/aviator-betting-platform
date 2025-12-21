@@ -1,0 +1,20 @@
+services:
+  ledger-worker:
+    build: .
+    container_name: ledger-worker-dev
+    volumes:
+      - ./src:/usr/src/app/src
+      - ./package.json:/usr/src/app/package.json
+      - ./package-lock.json:/usr/src/app/package-lock.json
+    depends_on:
+      cassandra:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    environment:
+      - CASSANDRA_HOSTS=cassandra
+      - CASSANDRA_KEYSPACE=aviator
+      - REDIS_URL=redis://redis:6379
+      - KAFKA_BROKERS=kafka:9093
+      - NODE_ENV=development
+    restart: unless-stopped
