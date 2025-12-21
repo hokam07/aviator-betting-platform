@@ -1,5 +1,5 @@
 const { Kafka } = require('kafkajs');
-const { processCallbackEvent, pendingDebit, getUserBalance } = require('./repo/ledger.repo');
+const { processCallbackEvent, getUserBalance } = require('./repo/ledger.repo');
 const { syncBalanceToRedis } = require('./services/balance.sync');
 
 const kafkaClient = new Kafka({
@@ -7,10 +7,13 @@ const kafkaClient = new Kafka({
 });
 
 const consumer = kafkaClient.consumer({ groupId: 'ledger-unified-group' });
+const producer = kafkaClient.producer();
 
 async function main() {
     await consumer.connect();
+    await producer.connect();
     console.log('Unified Ledger Consumer connected');
+    console.log('Ledger Producer connected');
 
     // Verify Cassandra connection
     try {
@@ -21,34 +24,39 @@ async function main() {
         console.error('Cassandra connection failed:', err);
     }
 
-    await consumer.subscribe({ topics: ['aggregator-callbacks', 'bet-events'], fromBeginning: false });
+    // Only subscribe to aggregator-callbacks topic
+    await consumer.subscribe({ topics: ['aggregator-callbacks'], fromBeginning: false });
 
     await consumer.run({
         eachMessage: async ({ topic, message }) => {
             try {
                 const event = JSON.parse(message.value.toString());
 
-                if (topic === 'aggregator-callbacks') {
-                    console.log('Processing callback:', event.type, event.external_tx_id);
-                    const result = await processCallbackEvent(event);
-                    if (result.applied) {
-                        console.log('Callback applied:', event.external_tx_id);
-                    }
-                } else if (topic === 'bet-events') {
-                    if (event.type === 'bet_pending' || event.event_type === 'bet_pending') {
-                        console.log('Processing bet_pending:', event.bet_round_id);
-                        const dateBucket = new Date().toISOString().slice(0, 7);
-                        await pendingDebit(
-                            event.user_id,
-                            event.amount,
-                            event.bet_round_id,
-                            dateBucket
-                        );
+                console.log('Processing callback:', event.type, event.external_tx_id);
+                const result = await processCallbackEvent(event);
 
-                        // Sync balance to Redis
-                        const user = await getUserBalance(event.user_id);
-                        await syncBalanceToRedis(event.user_id, user.balance);
-                        console.log('Bet pending recorded:', event.bet_round_id);
+                if (result.applied) {
+                    console.log('Callback applied:', event.external_tx_id);
+
+                    // If this was a 'bet' event, publish to bet-events topic for bet resolver
+                    if (event.type === 'bet') {
+                        await producer.send({
+                            topic: 'bet-events',
+                            messages: [
+                                {
+                                    key: event.user_id?.toString() || 'unknown',
+                                    value: JSON.stringify({
+                                        type: 'bet_pending',
+                                        user_id: event.user_id,
+                                        bet_round_id: event.bet_round_id,
+                                        amount: event.amount,
+                                        timestamp: new Date().toISOString()
+                                    }),
+                                    timestamp: Date.now().toString()
+                                }
+                            ]
+                        });
+                        console.log('Published bet_pending to bet-events for resolver:', event.bet_round_id);
                     }
                 }
             } catch (err) {
@@ -68,6 +76,9 @@ const shutdown = async (signal) => {
     try {
         await consumer.disconnect();
         console.log('Kafka consumer disconnected');
+
+        await producer.disconnect();
+        console.log('Kafka producer disconnected');
 
         const redis = require('./services/redis.client');
         await redis.quit();

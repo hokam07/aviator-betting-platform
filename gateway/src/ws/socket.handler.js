@@ -1,13 +1,6 @@
 // src/ws/socket.handler.js
 const redisAdapter = require('./redis.adapter');
-const Redis = require('ioredis');
-
-const redis = new Redis(process.env.REDIS_URL || 'redis://redis:6379');
-
-/**
- * Redis subscriber for pub/sub events (public_feed, balance_updates)
- */
-const redisSub = new Redis(process.env.REDIS_URL || 'redis://redis:6379');
+const { redis, redisSub } = require('../redis.client');
 
 async function initWebSocket(server) {
     const io = require('socket.io')(server, {

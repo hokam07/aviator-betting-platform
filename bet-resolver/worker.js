@@ -54,8 +54,8 @@ class BetResolver {
                 try {
                     const event = JSON.parse(message.value.toString());
 
-                    // Only process bet_pending events
-                    if (event.event_type === 'bet_pending') {
+                    // Only process bet_pending events (standardized on 'type' field)
+                    if (event.type === 'bet_pending') {
                         await this.resolveBet(event);
                     }
                 } catch (error) {
@@ -89,7 +89,7 @@ class BetResolver {
                     timeout: 5000
                 });
 
-                console.log(`✅ WIN: User ${user_id.slice(0, 8)}... won $${winAmount.toFixed(2)} (${this.multiplier}x)`);
+                console.log(`✅ WIN: User ${user_id.slice(0, 8)}... won $${winAmount.toFixed(2)} (${multiplier.toFixed(2)}x)`);
             } else {
                 // Send LOSS callback
                 await axios.post(CALLBACK_URL, {

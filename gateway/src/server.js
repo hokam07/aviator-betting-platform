@@ -21,10 +21,9 @@ const shutdown = async (signal) => {
     instance.close(async () => {
         console.log('HTTP server closed');
         try {
+            const { closeAll } = require('./redis.client');
+            await closeAll();
             console.log('Redis disconnected');
-            const Redis = require('ioredis');
-            const globalRedis = new Redis(process.env.REDIS_URL || 'redis://redis:6379');
-            await globalRedis.quit();
 
             process.exit(0);
         } catch (err) {

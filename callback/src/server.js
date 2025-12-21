@@ -13,13 +13,12 @@ init().then(() => {
         console.log(`\n${signal} received. Shutting down callback service...`);
         server.close(async () => {
             try {
-                // If producer is exported, we should use it. 
-                // Let's check event.publisher.js exports.
                 const { producer } = require('./services/event.publisher');
-                // Actually publisher.js doesn't export producer. I should fix that if needed or just use require logic.
-                // Wait, I can't easily access the producer instance unless exported.
+                await producer.disconnect();
+                console.log('Kafka producer disconnected');
                 process.exit(0);
             } catch (err) {
+                console.error('Error during shutdown:', err);
                 process.exit(1);
             }
         });

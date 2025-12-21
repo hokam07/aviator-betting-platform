@@ -40,12 +40,9 @@ const MARK_IDEMPOTENT = `
         ) VALUES(?, ?, toTimestamp(now()), ?, ?, ?)
             `;
 
-const CONFIRM_PENDING_DEBIT = `
-  UPDATE ledger_transactions 
-  SET status = 'CONFIRMED', external_tx_id = ?
-    WHERE user_id = ? AND date_bucket = ? AND tx_id = ?
-        IF status = 'PENDING'
-            `;
+// Removed unused CONFIRM_PENDING_DEBIT query - pending debits are tracked but not currently confirmed
+// The pending_debits field is incremented on bet placement but not decremented on resolution
+// This is intentional as it tracks outstanding bets that haven't been resolved yet
 
 const INC_STATS_BET = 'UPDATE user_stats SET total_bet_count = total_bet_count + 1, total_wagered_amount_cents = total_wagered_amount_cents + ? WHERE user_id = ?';
 const INC_STATS_WIN = 'UPDATE user_stats SET total_win_count = total_win_count + 1, total_won_amount_cents = total_won_amount_cents + ? WHERE user_id = ?';
@@ -192,20 +189,21 @@ async function processCallbackEvent(event) {
         }
 
         case 'loss': {
-            // Just mark as loss, no balance change
+            // Loss event: bet was already deducted when placed, just update stats
+            // No balance change needed, no transaction needed (bet deduction already recorded)
             let newBalance = new Decimal(parseFloat(user.balance || 0).toFixed(2));
             let newPending = new Decimal(parseFloat(user.pending_debits || 0).toFixed(2));
+
+            // Mark as applied to trigger idempotency and stats update
             applied = await applyConditionalUpdate(
                 user_id, newBalance.toString(), newPending.toString(), user.version
             );
+
             if (applied) {
-                await client.execute(INSERT_TXN, [
-                    user_id, dateBucket, normalizedAmount, 'DEBIT', 'CONFIRMED',
-                    bet_round_id, external_tx_id, 'loss', provider
-                ], { prepare: true });
+                // Mark idempotent to prevent duplicate processing
                 await client.execute(MARK_IDEMPOTENT, [provider, external_tx_id, payloadHash, user_id, bet_round_id], { prepare: true });
 
-                // Update Stats
+                // Update Stats only
                 await client.execute(INC_STATS_LOSS, [user_id], { prepare: true });
                 try {
                     await incUserStatsInRedis(user_id, { loss: true });
