@@ -1,4 +1,3 @@
-```markdown
 # Cassandra–Kafka Betting System
 
 A high-performance, event-driven betting platform built for scale, reliability, and real-time fan-out. Designed around Kafka for durability and WebSockets for live delivery, with Cassandra as the immutable ledger.
@@ -10,17 +9,29 @@ A high-performance, event-driven betting platform built for scale, reliability, 
 This project requires Docker + Docker Compose.
 
 ```bash
-make up
 make bootstrap
 ```
 
 What this does:
 
-* Starts all services (environment-aware)
+* Starts all services (modular architecture)
 * Waits for Cassandra CQL readiness (no race conditions)
-* Applies Cassandra schema
-* Creates required Kafka topics
+* Applies Cassandra schema & creates Kafka topics
+* **Auto-installs all auxiliary dependencies** (Dashboard + Scripts)
 * Prints final system status
+
+---
+
+## 📂 Project Structure (Modularized)
+
+| Path | Description |
+| --- | --- |
+| `gateway/`, `callback/` | The API surface area |
+| `ledger-worker/` | The heavy-duty financial processor (Bets & Manual Wins) |
+| `infra/` | Docker Compose for Redis, Kafka, Cassandra |
+| `monitoring/` | Prometheus & Grafana configs |
+| `docs/` | **[NEW]** AWS Deployment Guides |
+| `scripts/` | Traffic simulation & maintenance tools |
 
 ---
 
@@ -72,7 +83,6 @@ make simulate-high   # ~5000 users
 | Gateway           | User-facing API + WebSocket fan-out (output only)      |
 | Callback          | Receives external game results (input only)            |
 | Ledger Worker     | Single Kafka consumer group → balance, bets, wins     |
-| Bet Resolver      | Simulation-only win/loss generator                    |
 | Kafka             | Durable event log, replay, ordering                   |
 | Cassandra         | Immutable financial ledger                            |
 | Redis             | Fast ephemeral state (balances, live stats)           |
@@ -128,33 +138,13 @@ make test-callback
 
 ---
 
-## Manual Testing
+## ☁️ Cloud & AWS Deployment
 
-Place a bet:
+Detailed guides for going live are located in the `docs/` directory:
 
-```bash
-curl -X POST http://localhost:3000/api/bet \
-  -H "Content-Type: application/json" \
-  -d '{"user_id":"11111111-1111-1111-1111-111111111111","amount":10,"game_data":{"game":"aviator"}}'
-```
-
-Send a callback:
-
-```bash
-curl -X POST http://localhost:3001/callback \
-  -H "Content-Type: application/json" \
-  -H "x-signature: dummy" \
-  -d '{"type":"win","external_tx_id":"manual","user_id":"11111111-1111-1111-1111-111111111111","bet_round_id":"r1","amount":50}'
-```
-
----
-
-## Monitoring
-
-```bash
-make prometheus   # http://localhost:9090
-make grafana      # http://localhost:3100
-```
+1.  **[VPC Deployment (EC2 + Compose)](docs/aws-ec2-compose.md)**: Faster & Cheaper.
+2.  **[Enterprise Scale (EKS + K8s)](docs/aws-eks-guide.md)**: Million-user auto-scaling.
+3.  **[AWS Managed Services](docs/managed-services.md)**: Transitioning from containers to MSK/Keyspaces.
 
 ---
 
@@ -180,4 +170,3 @@ make grafana      # http://localhost:3100
 
 If you’re reading this as a reviewer:  
 this system is intentionally over-engineered to demonstrate real-world betting / trading backend design.
-```

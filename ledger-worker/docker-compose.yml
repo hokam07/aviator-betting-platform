@@ -1,0 +1,16 @@
+services:
+  ledger-worker:
+    build: .
+    volumes:
+      - ./src:/usr/src/app/src
+    depends_on:
+      cassandra:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    environment:
+      - CASSANDRA_HOSTS=cassandra
+      - CASSANDRA_KEYSPACE=aviator
+      - REDIS_URL=redis://redis:6379
+      - KAFKA_BROKERS=kafka:9093
+    restart: unless-stopped

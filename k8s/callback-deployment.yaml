@@ -27,6 +27,7 @@ spec:
             - name: KAFKA_BROKERS
               value: kafka:9093
           image: callback
+          imagePullPolicy: IfNotPresent
           name: callback
           ports:
             - containerPort: 3000

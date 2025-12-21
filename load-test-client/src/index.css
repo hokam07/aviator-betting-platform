@@ -3,5 +3,17 @@
 @tailwind utilities;
 
 body {
-  @apply bg-gray-900 text-white min-h-screen;
+  @apply bg-[#0c121d] text-white min-h-screen;
+}
+
+/* Utility to hide scrollbar but allow scrolling */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  /* IE and Edge */
+  scrollbar-width: none;
+  /* Firefox */
 }

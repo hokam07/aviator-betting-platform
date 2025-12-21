@@ -1,0 +1,19 @@
+services:
+  gateway:
+    build: .
+    container_name: gateway-dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./src:/usr/src/app/src
+      - ./package.json:/usr/src/app/package.json
+      - ./package-lock.json:/usr/src/app/package-lock.json
+    depends_on:
+      - kafka
+      - redis
+    environment:
+      - KAFKA_BROKERS=kafka:9093
+      - REDIS_URL=redis://redis:6379
+      - AGGREGATOR_URL=http://host.docker.internal:3001
+      - NODE_ENV=development
+    restart: unless-stopped

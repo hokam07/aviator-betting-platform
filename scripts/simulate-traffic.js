@@ -182,13 +182,19 @@ class VirtualUser {
 
     async placeBet() {
         const amount = randomBetAmount();
+        const externalTxId = crypto.randomUUID();
+        const betRoundId = crypto.randomUUID();
 
         try {
-            const response = await axios.post(`${GATEWAY_URL}/api/bet`, {
+            const response = await axios.post(`${CALLBACK_URL}/callback`, {
+                type: 'bet',
                 user_id: this.userId,
                 amount,
+                external_tx_id: externalTxId,
+                bet_round_id: betRoundId,
                 game_data: { game: 'aviator', multiplier: Math.random() * 10 }
             }, {
+                headers: { 'x-signature': 'dummy' },
                 timeout: 5000
             });
 
@@ -196,7 +202,8 @@ class VirtualUser {
             stats.successfulBets++;
             this.betCount++;
 
-            this.balance = response.data.balance;
+            // Balance will be updated via WebSocket from the gateway
+            // but we don't need to wait for it here to continue betting
 
             if (this.betCount % 10 === 0) {
                 console.log(chalk.blue(`User ${this.userId}: ${this.betCount} bets, balance: ${this.balance}`));
@@ -205,12 +212,8 @@ class VirtualUser {
             stats.totalBets++;
             stats.failedBets++;
 
-            if (err.response?.data?.error === 'Insufficient balance') {
-                stats.insufficientBalance++;
-            } else {
-                const errorMsg = err.response?.data?.error || err.message;
-                stats.errors[errorMsg] = (stats.errors[errorMsg] || 0) + 1;
-            }
+            const errorMsg = err.response?.data?.error || err.message;
+            stats.errors[errorMsg] = (stats.errors[errorMsg] || 0) + 1;
         }
     }
 
@@ -233,17 +236,50 @@ class VirtualUser {
         this.active = true;
         this.connectWebSocket();
 
-        // More aggressive chat - 50% chance every 2 seconds
+        this.socket.on('game_update', (data) => {
+            this.lastGameState = data;
+
+            // Logic to place bet during WAITING
+            if (data.status === 'WAITING' && !this.isBetting && Math.random() < 0.7) {
+                this.isBetting = true;
+                this.placedBetAmount = randomBetAmount();
+                this.socket.emit('place_bet', {
+                    userId: this.userId,
+                    amount: this.placedBetAmount,
+                    roundId: data.id
+                });
+            }
+
+            // Logic to cash out during FLYING
+            if (data.status === 'FLYING' && this.isBetting && !this.hasCashedOut) {
+                // Bots cash out at random targets (1.2x to 5.0x)
+                const target = 1.2 + Math.random() * 3.8;
+                if (data.multiplier >= target) {
+                    this.hasCashedOut = true;
+                    this.socket.emit('cash_out', {
+                        userId: this.userId,
+                        roundId: data.id,
+                        multiplier: data.multiplier
+                    });
+                }
+            }
+
+            // Reset state on CRASHED
+            if (data.status === 'CRASHED') {
+                this.isBetting = false;
+                this.hasCashedOut = false;
+            }
+        });
+
+        // More aggressive chat - 50% chance every 5 seconds
         const chatInterval = setInterval(() => {
             if (this.active && Math.random() > 0.5) {
                 this.sendChat();
             }
-        }, 2000);
+        }, 5000);
 
         while (this.active) {
-            await this.placeBet();
-            // Faster betting - 500ms to 2000ms
-            await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1500));
+            await new Promise(resolve => setTimeout(resolve, 1000));
         }
 
         clearInterval(chatInterval);

@@ -1,6 +1,7 @@
 const express = require('express');
 const { validateHmac } = require('../services/hmac.validator');
 const { publishCallbackEvent } = require('../services/event.publisher');
+const redis = require('../redis.client');
 
 const router = express.Router();
 
@@ -34,11 +35,21 @@ router.post('/callback', async (req, res) => {
             payload // store raw for audit if needed
         });
 
+        // BROADCAST TO REDIS FOR LIVE DASHBOARD
+        if (payload.type === 'bet' || payload.type === 'win') {
+            await redis.publish('public_feed', JSON.stringify({
+                type: payload.type,
+                user_id: payload.user_id,
+                amount: payload.amount,
+                timestamp: new Date().toISOString(),
+                multiplier: payload.is_cashout ? payload.amount / 10 : (payload.game_data?.multiplier || 1.1) // fallback
+            }));
+        }
+
         console.log(`Callback processed: ${payload.type} - ${payload.external_tx_id}`);
         res.status(200).json({ status: 'accepted' });
     } catch (err) {
-        console.error('Failed to publish to Kafka', err);
-        // Still return 200 to prevent aggregator retries — we'll replay via logs if needed
+        console.error('Failed to process callback', err);
         res.status(200).json({ status: 'queued' });
     }
 });

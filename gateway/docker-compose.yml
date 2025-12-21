@@ -1,0 +1,26 @@
+services:
+  gateway:
+    build: .
+    volumes:
+      - ./src:/usr/src/app/src
+    depends_on:
+      - kafka
+      - redis
+    environment:
+      - KAFKA_BROKERS=kafka:9093
+      - REDIS_URL=redis://redis:6379
+      - AGGREGATOR_URL=${AGGREGATOR_URL:-https://aggregator.example.com/api}
+      - AGGREGATOR_API_KEY=${AGGREGATOR_API_KEY:-test-key}
+      - AGGREGATOR_CALLBACK_URL=http://callback:3000/callback
+    restart: unless-stopped
+
+  gateway-proxy:
+    image: nginx:alpine
+    container_name: gateway-proxy
+    ports:
+      - "3000:80"
+    volumes:
+      - ../nginx-gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - gateway
+    restart: unless-stopped

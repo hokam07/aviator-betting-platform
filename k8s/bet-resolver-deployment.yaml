@@ -29,6 +29,7 @@ spec:
             - name: KAFKA_BROKERS
               value: kafka:9093
           image: bet-resolver
+          imagePullPolicy: IfNotPresent
           name: bet-resolver
           volumeMounts:
             - mountPath: /usr/src/app

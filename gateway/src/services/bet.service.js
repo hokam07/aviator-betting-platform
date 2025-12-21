@@ -1,7 +1,5 @@
-const Redis = require('ioredis');
+const { redis } = require('../redis.client');
 const cassandra = require('../cassandra/client');
-
-const redis = new Redis(process.env.REDIS_URL || 'redis://redis:6379');
 
 async function getUserBalance(userId) {
     const balance = await redis.get(`balance:${userId}`);

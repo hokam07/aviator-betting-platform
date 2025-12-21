@@ -1,0 +1,10 @@
+services:
+  game-engine:
+    build: .
+    depends_on:
+      - kafka
+      - redis
+    environment:
+      - KAFKA_BROKERS=kafka:9093
+      - REDIS_URL=redis://redis:6379
+    restart: unless-stopped

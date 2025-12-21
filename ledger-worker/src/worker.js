@@ -1,5 +1,5 @@
 const { Kafka } = require('kafkajs');
-const { processCallbackEvent, pendingDebit, getUserBalance } = require('./repo/ledger.repo');
+const { processCallbackEvent, getUserBalance } = require('./repo/ledger.repo');
 const { syncBalanceToRedis } = require('./services/balance.sync');
 
 const kafkaClient = new Kafka({
@@ -7,10 +7,13 @@ const kafkaClient = new Kafka({
 });
 
 const consumer = kafkaClient.consumer({ groupId: 'ledger-unified-group' });
+const producer = kafkaClient.producer();
 
 async function main() {
     await consumer.connect();
+    await producer.connect();
     console.log('Unified Ledger Consumer connected');
+    console.log('Ledger Producer connected');
 
     // Verify Cassandra connection
     try {
@@ -21,34 +24,26 @@ async function main() {
         console.error('Cassandra connection failed:', err);
     }
 
-    await consumer.subscribe({ topics: ['aggregator-callbacks', 'bet-events'], fromBeginning: false });
+    // Only subscribe to aggregator-callbacks topic
+    await consumer.subscribe({ topics: ['aggregator-callbacks'], fromBeginning: false });
 
     await consumer.run({
         eachMessage: async ({ topic, message }) => {
             try {
                 const event = JSON.parse(message.value.toString());
 
-                if (topic === 'aggregator-callbacks') {
-                    console.log('Processing callback:', event.type, event.external_tx_id);
-                    const result = await processCallbackEvent(event);
-                    if (result.applied) {
-                        console.log('Callback applied:', event.external_tx_id);
-                    }
-                } else if (topic === 'bet-events') {
-                    if (event.type === 'bet_pending' || event.event_type === 'bet_pending') {
-                        console.log('Processing bet_pending:', event.bet_round_id);
-                        const dateBucket = new Date().toISOString().slice(0, 7);
-                        await pendingDebit(
-                            event.user_id,
-                            event.amount,
-                            event.bet_round_id,
-                            dateBucket
-                        );
+                console.log('Processing callback:', event.type, event.external_tx_id);
+                const result = await processCallbackEvent(event);
 
-                        // Sync balance to Redis
-                        const user = await getUserBalance(event.user_id);
-                        await syncBalanceToRedis(event.user_id, user.balance);
-                        console.log('Bet pending recorded:', event.bet_round_id);
+                if (result.applied) {
+                    console.log('Callback applied:', event.external_tx_id);
+
+                    // If this was a 'bet' event, normally we might publish to other services.
+                    // BUT: We disabled publishing to 'bet-events' because 'bet-resolver' was auto-playing
+                    // and resolving bets immediately, breaking the Aviator manual cash-out flow.
+                    if (event.type === 'bet') {
+                        // await producer.send({...}); 
+                        console.log('Bet persisted. Waiting for manual cash-out (Auto-resolution disabled).');
                     }
                 }
             } catch (err) {
@@ -68,6 +63,9 @@ const shutdown = async (signal) => {
     try {
         await consumer.disconnect();
         console.log('Kafka consumer disconnected');
+
+        await producer.disconnect();
+        console.log('Kafka producer disconnected');
 
         const redis = require('./services/redis.client');
         await redis.quit();

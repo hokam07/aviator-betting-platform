@@ -69,7 +69,7 @@ help:
 	@echo ""
 	@echo "Scaling:"
 	@echo "  make scale-gateway N=5  - Scale gateway to N replicas"
-	@echo "  make scale-workers N=6  - Scale ledger + resolver workers"
+	@echo "  make scale-workers N=6  - Scale ledger + game engine workers"
 	@echo ""
 	@echo "Monitoring:"
 	@echo "  make prometheus      - Open Prometheus UI"
@@ -114,7 +114,7 @@ local-clean:
 
 prod-up:
 	@echo "Starting production-like stack (no host port conflicts, suitable for scaling)..."
-	$(COMPOSE_CMD) up -d --scale gateway=5 --scale ledger-worker=4 --scale bet-resolver=6
+	$(COMPOSE_CMD) up -d --scale gateway=5 --scale ledger-worker=4 --scale game-engine=6
 
 prod-down:
 	$(COMPOSE_CMD) down
@@ -130,10 +130,10 @@ dashboard:
 	./start-dashboard.sh
 
 simulate:
-	node scripts/simulate-traffic.js --users 2000 --duration 60
+	cd scripts && node simulate-traffic.js --users 2000 --duration 60
 
 simulate-high:
-	node scripts/simulate-traffic.js --users 5000 --duration 120
+	cd scripts && node simulate-traffic.js --users 5000 --duration 120
 
 # ========================
 # TESTING
@@ -201,7 +201,7 @@ scale-gateway:
 
 scale-workers:
 	@echo "Scaling workers to $(N) replicas..."
-	$(COMPOSE_CMD) up -d --scale ledger-worker=$(N) --scale bet-resolver=$(N)
+	$(COMPOSE_CMD) up -d --scale ledger-worker=$(N) --scale game-engine=$(N)
 
 # ========================
 # MONITORING
@@ -245,7 +245,7 @@ dev-scale-gateway:
 
 dev-scale-workers:
 	@echo "Scaling workers in dev mode..."
-	docker-compose -f docker-compose.dev.yml up -d --scale ledger-worker=$(N) --scale bet-resolver=$(N)
+	docker-compose -f docker-compose.dev.yml up -d --scale ledger-worker=$(N) --scale game-engine=$(N)
 
 # ========================
 # QUICK ALIASES
@@ -307,7 +307,12 @@ bootstrap:
 	@echo "📦 Creating Kafka topics..."
 	@$(MAKE) kafka-topics
 
-	@echo "📊 Final system status:"
+	@echo "� Installing simulation dependencies..."
+	@cd scripts && npm install
+	@echo "📦 Installing dashboard dependencies..."
+	@cd load-test-client && npm install
+
+	@echo "�📊 Final system status:"
 	@$(MAKE) status
 
 	$(call check_failures)
