@@ -23,9 +23,9 @@ async function initWebSocket(server) {
     io.adapter(redisAdapter);
 
     /**
-     * Subscribe to Redis channels (same as second file)
+     * Subscribe to Redis channels
      */
-    redisSub.subscribe('balance_updates', 'public_feed', (err) => {
+    redisSub.subscribe('balance_updates', 'public_feed', 'game_updates', (err) => {
         if (err) {
             console.error('[WS] Redis subscribe error:', err);
         } else {
@@ -45,8 +45,11 @@ async function initWebSocket(server) {
             }
 
             if (channel === 'public_feed') {
-                console.log(`[WS] Emitting public_feed: ${data.type} for ${data.user_id}`);
                 io.emit('public_feed', data);
+            }
+
+            if (channel === 'game_updates') {
+                io.emit('game_update', data);
             }
         } catch (err) {
             console.error(`[WS] Error parsing message on ${channel}:`, err);
@@ -77,12 +80,58 @@ async function initWebSocket(server) {
         });
 
         socket.on('chat_message', (data) => {
-            // Broadcast chat to all (or per-round room later)
             io.emit('chat_message', {
                 user: data.user || 'Anonymous',
                 text: data.text,
                 timestamp: new Date().toISOString()
             });
+        });
+
+        // Interactive Gaming Handlers
+        socket.on('place_bet', async (data) => {
+            const { userId, amount, roundId } = data;
+            console.log(`[WS] Bet placed: User ${userId} for round ${roundId} amount ${amount}`);
+
+            // In a real system, we would validate round state here
+            // and write to a 'bets' collection in Redis for that round.
+            // For now, we'll hit the Callback service to simulate the financial flow
+            try {
+                const axios = require('axios');
+                const CALLBACK_URL = process.env.AGGREGATOR_CALLBACK_URL || 'http://callback:3000/callback';
+                await axios.post(CALLBACK_URL, {
+                    type: 'bet',
+                    user_id: userId,
+                    amount,
+                    external_tx_id: `ws-${roundId}-${userId}`,
+                    bet_round_id: roundId
+                }, { headers: { 'x-signature': 'dummy' } });
+
+                socket.emit('bet_confirmed', { roundId, amount });
+            } catch (err) {
+                socket.emit('error', { message: 'Failed to place bet' });
+            }
+        });
+
+        socket.on('cash_out', async (data) => {
+            const { userId, roundId, multiplier } = data;
+            console.log(`[WS] Cash out: User ${userId} at ${multiplier}x`);
+
+            try {
+                const axios = require('axios');
+                const CALLBACK_URL = process.env.AGGREGATOR_CALLBACK_URL || 'http://callback:3000/callback';
+                await axios.post(CALLBACK_URL, {
+                    type: 'win',
+                    user_id: userId,
+                    amount: multiplier, // In this simplified test, we use multiplier as win amount or similar
+                    external_tx_id: `win-${roundId}-${userId}`,
+                    bet_round_id: roundId,
+                    is_cashout: true
+                }, { headers: { 'x-signature': 'dummy' } });
+
+                socket.emit('cashout_confirmed', { multiplier });
+            } catch (err) {
+                socket.emit('error', { message: 'Cash out failed' });
+            }
         });
 
         socket.on('disconnect', () => {

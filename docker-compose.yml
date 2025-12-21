@@ -9,4 +9,4 @@ include:
   - path: ./gateway/docker-compose.yml
   - path: ./ledger-worker/docker-compose.yml
   - path: ./callback/docker-compose.yml
-  - path: ./bet-resolver/docker-compose.yml
+  - path: ./game-engine/docker-compose.yml

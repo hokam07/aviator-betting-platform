@@ -4,6 +4,7 @@ import LiveStats from './components/LiveStats';
 import LiveChat from './components/LiveChat';
 import BetTicker from './components/BetTicker';
 import MainUserControl from './components/MainUserControl';
+import AviatorGame from './components/AviatorGame';
 
 const WS_URL = 'http://localhost:3000';
 const socketInstance = io(WS_URL, {
@@ -45,14 +46,14 @@ function App() {
         setBets(prev => [data, ...prev].slice(0, 50));
       } else if (data.type === 'win') {
         setTotalWon(prev => prev + (parseFloat(data.amount) || 0));
-        setBets(prev => [{...data, type: 'win'}, ...prev].slice(0, 50));
+        setBets(prev => [{ ...data, type: 'win' }, ...prev].slice(0, 50));
 
         if (data.amount >= 100) {
           console.log(`[APP] Showing Win Toast for $${data.amount}`);
           setWinAmount(data.amount);
           setToastKey(prev => prev + 1);
           setShowWinToast(true);
-          
+
           if (winTimeoutRef.current) clearTimeout(winTimeoutRef.current);
           winTimeoutRef.current = setTimeout(() => {
             setShowWinToast(false);
@@ -80,7 +81,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gray-900 text-white p-4 md:p-8 font-sans transition-all relative overflow-x-hidden">
-      
+
       {/* Win Toast Notification */}
       {showWinToast && (
         <div key={toastKey} className="fixed top-10 left-1/2 -translate-x-1/2 z-50 animate-bounce pointer-events-none">
@@ -98,7 +99,7 @@ function App() {
       )}
 
       <div className="w-full max-w-[1800px] mx-auto space-y-8">
-        
+
         {/* Header */}
         <div className="flex justify-between items-center pb-8 border-b border-gray-800">
           <div className="flex items-center gap-6">
@@ -108,7 +109,7 @@ function App() {
               </h1>
               <p className="text-gray-400 mt-2 text-lg font-light italic">Real-time Load Test Monitor & Control Center</p>
             </div>
-            
+
             {/* Debug Panel */}
             <div className="flex gap-4 ml-8 bg-gray-800/50 p-4 rounded-xl border border-gray-700">
               <div className="flex flex-col">
@@ -133,10 +134,16 @@ function App() {
         {/* Control Section */}
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
           <div className="xl:col-span-2 h-full">
-            <MainUserControl socket={socketInstance} />
+            <AviatorGame socket={socketInstance} />
           </div>
           <div className="h-full">
             <LiveStats totalBets={totalBets} totalWon={totalWon} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+          <div className="xl:col-span-3">
+            <MainUserControl socket={socketInstance} />
           </div>
         </div>
 

@@ -11,6 +11,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - AGGREGATOR_URL=${AGGREGATOR_URL:-https://aggregator.example.com/api}
       - AGGREGATOR_API_KEY=${AGGREGATOR_API_KEY:-test-key}
+      - AGGREGATOR_CALLBACK_URL=http://callback:3000/callback
     restart: unless-stopped
 
   gateway-proxy:

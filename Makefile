@@ -114,7 +114,7 @@ local-clean:
 
 prod-up:
 	@echo "Starting production-like stack (no host port conflicts, suitable for scaling)..."
-	$(COMPOSE_CMD) up -d --scale gateway=5 --scale ledger-worker=4 --scale bet-resolver=6
+	$(COMPOSE_CMD) up -d --scale gateway=5 --scale ledger-worker=4 --scale game-engine=6
 
 prod-down:
 	$(COMPOSE_CMD) down
@@ -201,7 +201,7 @@ scale-gateway:
 
 scale-workers:
 	@echo "Scaling workers to $(N) replicas..."
-	$(COMPOSE_CMD) up -d --scale ledger-worker=$(N) --scale bet-resolver=$(N)
+	$(COMPOSE_CMD) up -d --scale ledger-worker=$(N) --scale game-engine=$(N)
 
 # ========================
 # MONITORING
@@ -245,7 +245,7 @@ dev-scale-gateway:
 
 dev-scale-workers:
 	@echo "Scaling workers in dev mode..."
-	docker-compose -f docker-compose.dev.yml up -d --scale ledger-worker=$(N) --scale bet-resolver=$(N)
+	docker-compose -f docker-compose.dev.yml up -d --scale ledger-worker=$(N) --scale game-engine=$(N)
 
 # ========================
 # QUICK ALIASES
