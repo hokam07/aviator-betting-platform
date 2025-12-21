@@ -182,13 +182,19 @@ class VirtualUser {
 
     async placeBet() {
         const amount = randomBetAmount();
+        const externalTxId = crypto.randomUUID();
+        const betRoundId = crypto.randomUUID();
 
         try {
-            const response = await axios.post(`${GATEWAY_URL}/api/bet`, {
+            const response = await axios.post(`${CALLBACK_URL}/callback`, {
+                type: 'bet',
                 user_id: this.userId,
                 amount,
+                external_tx_id: externalTxId,
+                bet_round_id: betRoundId,
                 game_data: { game: 'aviator', multiplier: Math.random() * 10 }
             }, {
+                headers: { 'x-signature': 'dummy' },
                 timeout: 5000
             });
 
@@ -196,7 +202,8 @@ class VirtualUser {
             stats.successfulBets++;
             this.betCount++;
 
-            this.balance = response.data.balance;
+            // Balance will be updated via WebSocket from the gateway
+            // but we don't need to wait for it here to continue betting
 
             if (this.betCount % 10 === 0) {
                 console.log(chalk.blue(`User ${this.userId}: ${this.betCount} bets, balance: ${this.balance}`));
@@ -205,12 +212,8 @@ class VirtualUser {
             stats.totalBets++;
             stats.failedBets++;
 
-            if (err.response?.data?.error === 'Insufficient balance') {
-                stats.insufficientBalance++;
-            } else {
-                const errorMsg = err.response?.data?.error || err.message;
-                stats.errors[errorMsg] = (stats.errors[errorMsg] || 0) + 1;
-            }
+            const errorMsg = err.response?.data?.error || err.message;
+            stats.errors[errorMsg] = (stats.errors[errorMsg] || 0) + 1;
         }
     }
 
