@@ -27,6 +27,8 @@ spec:
               value: kafka:9093
             - name: REDIS_URL
               value: redis://redis:6379
+            - name: NODE_OPTIONS
+              value: "--max-old-space-size=4096"  # 4GB heap for WebSocket scaling
           image: gateway
           imagePullPolicy: IfNotPresent
           name: gateway
@@ -35,11 +37,11 @@ spec:
               protocol: TCP
           resources:
             requests:
-              cpu: 100m
-              memory: 128Mi
+              cpu: 250m
+              memory: 512Mi
             limits:
-              cpu: 500m
-              memory: 256Mi
+              cpu: 1000m
+              memory: 4096Mi
           readinessProbe:
             httpGet:
               path: /health
