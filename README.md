@@ -165,6 +165,11 @@ Detailed guides for going live are located in the `docs/` directory:
 * No Redis-only money state
 * Clear input/output service boundaries
 
+**K8s Resource Tuning**: For high-scale deployments (100k+ users):
+* Gateway: 1 CPU / 4GB memory (WebSocket connection buffers + V8 heap)
+* Ledger Worker: 1 CPU / 512MB memory (1k bets/sec throughput per worker)
+* Environment variables: `NODE_OPTIONS=--max-old-space-size=4096`, `KAFKA_MAX_BYTES_PER_PARTITION=1048576`
+
 ---
 
 ## Production-Ready Characteristics
