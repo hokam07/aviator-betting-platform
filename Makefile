@@ -66,6 +66,8 @@ help:
 	@echo "  make kafka-topics       - Create required topics"
 	@echo "  make kafka-status       - List topics"
 	@echo "  make kafka-consume      - Consume from a topic (interactive)"
+	@echo "  make redis-cluster-init - Initialize Redis Cluster (6 nodes)"
+	@echo "  make redis-cluster-status - Show Redis Cluster status"
 	@echo ""
 	@echo "Scaling:"
 	@echo "  make scale-gateway N=5  - Scale gateway to N replicas"
@@ -196,6 +198,17 @@ kafka-consume:
 		--bootstrap-server kafka:9093 \
 		--topic bet-events \
 		--from-beginning
+
+redis-cluster-init:
+	@echo "Initializing Redis Cluster (6 nodes: 3 masters + 3 replicas)..."
+	@./scripts/init-redis-cluster.sh
+
+redis-cluster-status:
+	@echo "Redis Cluster Info:"
+	@docker exec redis-1 redis-cli cluster info
+	@echo ""
+	@echo "Redis Cluster Nodes:"
+	@docker exec redis-1 redis-cli cluster nodes
 
 # ========================
 # SCALING
