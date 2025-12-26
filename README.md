@@ -134,6 +134,7 @@ make clean         # Remove containers + volumes
 ```bash
 make bootstrap     # Waits + Cassandra init + Kafka topics
 make cassandra-shell
+make cassandra-init-optimized  # Apply time-bucketed schema for high-scale
 make kafka-status
 ```
 
