@@ -109,6 +109,12 @@ Design Choice:
 * Kafka → source of truth, replay, scaling, fault tolerance
 * Redis → real-time state for dashboards & WS
 
+**Redis Adapter Configuration**: The gateway supports two Socket.io adapter modes:
+* `SOCKET_ADAPTER_TYPE=pubsub` (default): Standard Redis Pub/Sub adapter
+* `SOCKET_ADAPTER_TYPE=streams`: Redis Streams adapter for better horizontal scaling with multiple gateway instances
+
+Set via environment variable in `.env` or K8s deployment.
+
 ---
 
 ## Common Makefile Commands
