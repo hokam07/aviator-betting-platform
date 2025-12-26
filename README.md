@@ -83,9 +83,11 @@ make simulate-high   # ~5000 users
 | Gateway           | User-facing API + WebSocket fan-out (output only)      |
 | Callback          | Receives external game results (input only)            |
 | Ledger Worker     | Single Kafka consumer group → balance, bets, wins     |
-| Kafka             | Durable event log, replay, ordering                   |
+| Kafka             | Durable event log, replay, ordering (50 partitions)   |
 | Cassandra         | Immutable financial ledger                            |
 | Redis             | Fast ephemeral state (balances, live stats)           |
+
+**Kafka Scaling**: Both `bet-events` and `aggregator-callbacks` topics use **50 partitions** to support up to 40 parallel ledger workers (K8s HPA max). Each partition can have only one active consumer per consumer group.
 
 Rule: Gateway never processes business logic.  
 Callback never talks to users.

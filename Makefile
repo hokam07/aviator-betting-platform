@@ -170,14 +170,16 @@ kafka-topics:
 		--bootstrap-server kafka:9093 \
 		--create --if-not-exists \
 		--topic bet-events \
-		--partitions 12 \
-		--replication-factor 1
+		--partitions 50 \
+		--replication-factor 1 \
+		--config retention.ms=604800000
 	@docker exec $(KAFKA_CONTAINER) kafka-topics \
 		--bootstrap-server kafka:9093 \
 		--create --if-not-exists \
 		--topic aggregator-callbacks \
-		--partitions 12 \
-		--replication-factor 1
+		--partitions 50 \
+		--replication-factor 1 \
+		--config retention.ms=604800000
 	@echo "✓ Kafka topics ready"
 
 kafka-status:
