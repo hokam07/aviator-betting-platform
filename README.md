@@ -158,9 +158,10 @@ make test-callback
 
 Detailed guides for going live are located in the `docs/` directory:
 
-1.  **[VPC Deployment (EC2 + Compose)](docs/aws-ec2-compose.md)**: Faster & Cheaper.
-2.  **[Enterprise Scale (EKS + K8s)](docs/aws-eks-guide.md)**: Million-user auto-scaling.
-3.  **[AWS Managed Services](docs/managed-services.md)**: Transitioning from containers to MSK/Keyspaces.
+1.  **[Cost Optimization](docs/aws-cost-optimization.md)**: Deploy 100k users for $800-$1k/month (70% savings).
+2.  **[VPC Deployment (EC2 + Compose)](docs/aws-ec2-compose.md)**: Faster & Cheaper.
+3.  **[Enterprise Scale (EKS + K8s)](docs/aws-eks-guide.md)**: Million-user auto-scaling.
+4.  **[AWS Managed Services](docs/managed-services.md)**: Transitioning from containers to MSK/Keyspaces.
 
 ---
 
