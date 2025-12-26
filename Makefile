@@ -158,6 +158,10 @@ cassandra-init:
 	@docker exec -i $(CASSANDRA_CONTAINER) cqlsh < ledger-worker/db/schema.cql
 	@echo "✓ Cassandra schema applied"
 
+cassandra-init-optimized:
+	@docker exec -i $(CASSANDRA_CONTAINER) cqlsh < ledger-worker/db/schema-optimized.cql
+	@echo "✓ Cassandra optimized schema applied (time-bucketed tables)"
+
 cassandra-status:
 	@docker exec $(CASSANDRA_CONTAINER) cqlsh -e "DESCRIBE KEYSPACES"
 
