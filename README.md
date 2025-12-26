@@ -115,6 +115,13 @@ Design Choice:
 
 Set via environment variable in `.env` or K8s deployment.
 
+**Redis Cluster (High Availability)**: For production deployments (>50k users):
+* **Single Redis** (default): Simple, suitable for development and < 50k users
+* **Redis Cluster** (6+ nodes): High availability, horizontal scaling, fault tolerance
+* Enable cluster mode: Set `REDIS_MODE=cluster` and `REDIS_CLUSTER_NODES=redis-1:6379,redis-2:6379,redis-3:6379`
+* Initialize cluster: `make redis-cluster-init` (after starting infra services)
+* Check status: `make redis-cluster-status`
+
 ---
 
 ## Common Makefile Commands

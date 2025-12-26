@@ -45,12 +45,72 @@ services:
       KAFKA_NUM_PARTITIONS: 12
       KAFKA_DEFAULT_REPLICATION_FACTOR: 1
 
-  redis:
+  # Redis Cluster: 3 Masters + 3 Replicas (minimum for production)
+  redis-1:
     image: redis:7-alpine
-    container_name: redis
+    container_name: redis-1
     ports:
       - "6379:6379"
-    command: redis-server --save 60 1 --loglevel warning
+      - "16379:16379"
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes --port 6379
+    volumes:
+      - redis-1-data:/data
+
+  redis-2:
+    image: redis:7-alpine
+    container_name: redis-2
+    ports:
+      - "6380:6379"
+      - "16380:16379"
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes --port 6379
+    volumes:
+      - redis-2-data:/data
+
+  redis-3:
+    image: redis:7-alpine
+    container_name: redis-3
+    ports:
+      - "6381:6379"
+      - "16381:16379"
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes --port 6379
+    volumes:
+      - redis-3-data:/data
+
+  redis-4:
+    image: redis:7-alpine
+    container_name: redis-4
+    ports:
+      - "6382:6379"
+      - "16382:16379"
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes --port 6379
+    volumes:
+      - redis-4-data:/data
+
+  redis-5:
+    image: redis:7-alpine
+    container_name: redis-5
+    ports:
+      - "6383:6379"
+      - "16383:16379"
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes --port 6379
+    volumes:
+      - redis-5-data:/data
+
+  redis-6:
+    image: redis:7-alpine
+    container_name: redis-6
+    ports:
+      - "6384:6379"
+      - "16384:16379"
+    command: redis-server --cluster-enabled yes --cluster-config-file nodes.conf --cluster-node-timeout 5000 --appendonly yes --port 6379
+    volumes:
+      - redis-6-data:/data
 
 volumes:
   cassandra-data:
+  redis-1-data:
+  redis-2-data:
+  redis-3-data:
+  redis-4-data:
+  redis-5-data:
+  redis-6-data:
